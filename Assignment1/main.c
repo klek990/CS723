@@ -15,9 +15,11 @@
 #define mainREG_TEST_1_PARAMETER    ( ( void * ) 0x12345678 )
 #define mainREG_TEST_2_PARAMETER    ( ( void * ) 0x87654321 )
 #define mainREG_TEST_PRIORITY       ( tskIDLE_PRIORITY + 1)
+#define SAMPLINGFREQUENCY 16e3
 static void processSignalTask(void *pvParameters);
 static void pollWallSwitchesTask(void *pvParameters);
-int samplingFrequency = 16e3;
+float freqNext = 0, freqPrev = 0, freqRoC = 0;
+int samplesPrev = 0, samplesNext = 0, avgSamples = 0;
 
 /*
  * Create the demo tasks then start the scheduler.
@@ -36,30 +38,34 @@ int main(void)
 	for (;;);
 }
 
+void readFrequency() 
+{
+	samplesPrev = samplesNext;
+	samplesNext = IORD_ALTERA_AVALON_PIO_DATA(FREQUENCY_ANALYSER_BASE);
+
+	avgSamples = (samplesNext + samplesPrev)/2;
+
+	freqPrev = SAMPLINGFREQUENCY/(float)samplesPrev;
+	freqNext = SAMPLINGFREQUENCY/(float)samplesNext;
+
+	freqRoC = ((freqNext - freqPrev)*SAMPLINGFREQUENCY)/avgSamples;
+
+	printf("Freq Next: %0.2f\n", freqNext);
+	printf("Freq Prev: %0.2f\n", freqPrev);
+	printf("Freq RoC: %0.2f\n", freqRoC);
+
+	// printf("Previous Samples: %d\n", samplesPrev);
+	// printf("New Samples: %d\n", samplesNext);
+	// printf("Average samples: %d\n\n", avgSamples);
+	return;
+}
+
 static void processSignalTask(void *pvParameters)
 {
-	float freqNext = 0, freqPrev = 0, freqRoC = 0;
-	int samplesPrev = 0, samplesNext = 0, avgSamples = 0;
-
+	/* Register FAU */
+	alt_irq_register(FREQUENCY_ANALYSER_IRQ, 0, readFrequency);
 	while (1)
 	{
-		samplesPrev = samplesNext;
-		samplesNext = IORD_ALTERA_AVALON_PIO_DATA(FREQUENCY_ANALYSER_BASE);
-
-		avgSamples = (samplesNext + samplesPrev)/2;
-
-		freqPrev = samplingFrequency/(float)samplesPrev;
-		freqNext = samplingFrequency/(float)samplesNext;
-
-		freqRoC = ((freqNext - freqPrev)*samplingFrequency)/avgSamples;
-
-		printf("Freq Next: %0.2f\n", freqNext);
-		printf("Freq Prev: %0.2f\n", freqPrev);
-		printf("Freq RoC: %0.2f\n", freqRoC);
-
-		printf("Previous Samples: %d\n", samplesPrev);
-		printf("New Samples: %d\n", samplesNext);
-		printf("Average samples: %d\n\n", avgSamples);
 		vTaskDelay(1000);
 	}
 }
@@ -68,13 +74,11 @@ static void pollWallSwitchesTask(void *pvParameters)
 {
 	int wallSwitch = 0;
 	
-	/* Initally, all LED's green */
+	/* Initially, all LED's green */
 	IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, 255);
 
 	while (1)
 	{
-
-
 		/* Read which wall switch is triggered */
 		wallSwitch = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111111;
 
