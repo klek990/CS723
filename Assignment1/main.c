@@ -16,30 +16,17 @@
 #define mainREG_TEST_2_PARAMETER    ( ( void * ) 0x87654321 )
 #define mainREG_TEST_PRIORITY       ( tskIDLE_PRIORITY + 1)
 #define SAMPLINGFREQUENCY 16e3
+
 static void processSignalTask(void *pvParameters);
 static void pollWallSwitchesTask(void *pvParameters);
+
+/* Global frequency variables to be passed in queues */
 float freqNext = 0, freqPrev = 0, freqRoC = 0;
-int samplesPrev = 0, samplesNext = 0, avgSamples = 0;
 
-/*
- * Create the demo tasks then start the scheduler.
- */
-int main(void)
-{
-	/* The RegTest tasks as described at the top of this file. */
-	xTaskCreate( processSignalTask, "processSignal", configMINIMAL_STACK_SIZE, mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY, NULL);
-	xTaskCreate( pollWallSwitchesTask, "pollWallSwitches", configMINIMAL_STACK_SIZE, mainREG_TEST_2_PARAMETER, mainREG_TEST_PRIORITY, NULL);
-
-	/* Finally start the scheduler. */
-	vTaskStartScheduler();
-
-	/* Will only reach here if there is insufficient heap available to start
-	 the scheduler. */
-	for (;;);
-}
 
 void readFrequency() 
 {
+	int samplesPrev = 0, samplesNext = 0, avgSamples = 0;
 	samplesPrev = samplesNext;
 	samplesNext = IORD_ALTERA_AVALON_PIO_DATA(FREQUENCY_ANALYSER_BASE);
 
@@ -60,10 +47,9 @@ void readFrequency()
 	return;
 }
 
+/* This should be used to send the signal information to the other tasks */
 static void processSignalTask(void *pvParameters)
 {
-	/* Register FAU */
-	alt_irq_register(FREQUENCY_ANALYSER_IRQ, 0, readFrequency);
 	while (1)
 	{
 		vTaskDelay(1000);
@@ -91,8 +77,27 @@ static void pollWallSwitchesTask(void *pvParameters)
 		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitch);
 		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE & 0b11111111, ~wallSwitch);
 
-		printf("Switch active: %d\n", wallSwitch);
 		vTaskDelay(1000);
 	}
 
+}
+
+/*
+ * Create the demo tasks then start the scheduler.
+ */
+int main(void)
+{
+	/* Register FAU */
+	alt_irq_register(FREQUENCY_ANALYSER_IRQ, 0, readFrequency);
+
+	/* The RegTest tasks as described at the top of this file. */
+	xTaskCreate( processSignalTask, "processSignal", configMINIMAL_STACK_SIZE, mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY, NULL);
+	xTaskCreate( pollWallSwitchesTask, "pollWallSwitches", configMINIMAL_STACK_SIZE, mainREG_TEST_2_PARAMETER, mainREG_TEST_PRIORITY, NULL);
+
+	/* Finally start the scheduler. */
+	vTaskStartScheduler();
+
+	/* Will only reach here if there is insufficient heap available to start
+	 the scheduler. */
+	for (;;);
 }
