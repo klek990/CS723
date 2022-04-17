@@ -9,6 +9,7 @@
 #include "FreeRTOS/FreeRTOS.h"
 #include "FreeRTOS/task.h"
 #include "FreeRTOS/queue.h"
+#include "freertos/semphr.h"
 
 /* The parameters passed to the reg test tasks.  This is just done to check
  the parameter passing mechanism is working correctly. */
@@ -17,14 +18,22 @@
 #define mainREG_TEST_PRIORITY       ( tskIDLE_PRIORITY + 1)
 #define SAMPLINGFREQUENCY 16e3
 
+/* Semaphores */
+/* 0 = Normal, 1 = Load managing, 2 = Maintenance */
+SemaphoreHandle_t systemState;
+
+/* Frequency thresholds configured using keyboard */
+SemaphoreHandle_t lowerThreshold;
+SemaphoreHandle_t upperThreshold;
+
 static void processSignalTask(void *pvParameters);
 static void pollWallSwitchesTask(void *pvParameters);
 
 /* Global frequency variables to be passed in queues */
 float freqNext = 0, freqPrev = 0, freqRoC = 0;
 
-
-void readFrequency() 
+/* Read signal from onboard FAU and do calculations */
+void readFrequencyISR() 
 {
 	int samplesPrev = 0, samplesNext = 0, avgSamples = 0;
 	samplesPrev = samplesNext;
@@ -41,9 +50,13 @@ void readFrequency()
 	printf("Freq Prev: %0.2f\n", freqPrev);
 	printf("Freq RoC: %0.2f\n", freqRoC);
 
-	// printf("Previous Samples: %d\n", samplesPrev);
-	// printf("New Samples: %d\n", samplesNext);
-	// printf("Average samples: %d\n\n", avgSamples);
+	return;
+}
+
+/*  */
+void readKeyboardISR (void* context, alt_u32 id)
+{
+
 	return;
 }
 
@@ -56,6 +69,13 @@ static void processSignalTask(void *pvParameters)
 	}
 }
 
+
+/* When load is set:
+* 		Red LED = on
+* 		Green LED = off
+* When load is shed:
+* 		Red LED = off
+* 		Green LED = on */
 static void pollWallSwitchesTask(void *pvParameters)
 {
 	int wallSwitch = 0;
@@ -68,12 +88,6 @@ static void pollWallSwitchesTask(void *pvParameters)
 		/* Read which wall switch is triggered */
 		wallSwitch = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111111;
 
-		/*When load is set:
-		* 		Red LED = on
-		* 		Green LED = off
-		* When load is shed:
-		* 		Red LED = off
-		* 		Green LED = on */
 		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitch);
 		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE & 0b11111111, ~wallSwitch);
 
@@ -88,7 +102,7 @@ static void pollWallSwitchesTask(void *pvParameters)
 int main(void)
 {
 	/* Register FAU */
-	alt_irq_register(FREQUENCY_ANALYSER_IRQ, 0, readFrequency);
+	alt_irq_register(FREQUENCY_ANALYSER_IRQ, 0, readFrequencyISR);
 
 	/* The RegTest tasks as described at the top of this file. */
 	xTaskCreate( processSignalTask, "processSignal", configMINIMAL_STACK_SIZE, mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY, NULL);
