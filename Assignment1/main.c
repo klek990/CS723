@@ -4,6 +4,10 @@
 #include <string.h>
 #include <system.h>
 #include <altera_avalon_pio_regs.h>
+#include "io.h"
+#include "sys/alt_irq.h"
+#include "altera_up_avalon_ps2.h"
+#include "altera_up_ps2_keyboard.h"
 
 /* Scheduler includes. */
 #include "FreeRTOS/FreeRTOS.h"
@@ -13,9 +17,9 @@
 
 /* The parameters passed to the reg test tasks.  This is just done to check
  the parameter passing mechanism is working correctly. */
-#define mainREG_TEST_1_PARAMETER    ( ( void * ) 0x12345678 )
-#define mainREG_TEST_2_PARAMETER    ( ( void * ) 0x87654321 )
-#define mainREG_TEST_PRIORITY       ( tskIDLE_PRIORITY + 1)
+#define mainREG_TEST_1_PARAMETER ((void *)0x12345678)
+#define mainREG_TEST_2_PARAMETER ((void *)0x87654321)
+#define mainREG_TEST_PRIORITY (tskIDLE_PRIORITY + 1)
 #define SAMPLINGFREQUENCY 16e3
 
 /* Semaphores */
@@ -33,18 +37,18 @@ static void pollWallSwitchesTask(void *pvParameters);
 float freqNext = 0, freqPrev = 0, freqRoC = 0;
 
 /* Read signal from onboard FAU and do calculations */
-void readFrequencyISR() 
+void readFrequencyISR()
 {
 	int samplesPrev = 0, samplesNext = 0, avgSamples = 0;
 	samplesPrev = samplesNext;
 	samplesNext = IORD_ALTERA_AVALON_PIO_DATA(FREQUENCY_ANALYSER_BASE);
 
-	avgSamples = (samplesNext + samplesPrev)/2;
+	avgSamples = (samplesNext + samplesPrev) / 2;
 
-	freqPrev = SAMPLINGFREQUENCY/(float)samplesPrev;
-	freqNext = SAMPLINGFREQUENCY/(float)samplesNext;
+	freqPrev = SAMPLINGFREQUENCY / (float)samplesPrev;
+	freqNext = SAMPLINGFREQUENCY / (float)samplesNext;
 
-	freqRoC = ((freqNext - freqPrev)*SAMPLINGFREQUENCY)/avgSamples;
+	freqRoC = ((freqNext - freqPrev) * SAMPLINGFREQUENCY) / avgSamples;
 
 	printf("Freq Next: %0.2f\n", freqNext);
 	printf("Freq Prev: %0.2f\n", freqPrev);
@@ -54,9 +58,39 @@ void readFrequencyISR()
 }
 
 /*  */
-void readKeyboardISR (void* context, alt_u32 id)
+void readKeyboardISR(void *context, alt_u32 id)
 {
+	char ascii;
+	int status = 0;
+	unsigned char key = 0;
+	KB_CODE_TYPE decode_mode;
+	status = decode_scancode(context, &decode_mode, &key, &ascii);
+	if (status == 0) // success
+	{
+		// print out the result
+		switch (decode_mode)
+		{
+		case KB_ASCII_MAKE_CODE:
+			printf("ASCII   : %c\n", ascii);
+			break;
+		case KB_LONG_BINARY_MAKE_CODE:
+			// do nothing
+		case KB_BINARY_MAKE_CODE:
+			printf("MAKE CODE : %x\n", key);
+			break;
+		case KB_BREAK_CODE:
+			// do nothing
+		default:
+			printf("DEFAULT   : %x\n", key);
+			break;
+		}
+	}
 
+	/* 'ascii' holds the character, can be represented as upper case of that letter (pressing k gives K)
+	 * 	Further, we can simply read the letter input to manage the upper and lower threshold. If 'U' is
+	 *	pressed, we then read the next set of number key strokes to assign a value to the upper threshold
+	 * 	vice versa for lower threshold.*/
+	IOWR(SEVEN_SEG_BASE, 0, ascii);
 	return;
 }
 
@@ -69,17 +103,16 @@ static void processSignalTask(void *pvParameters)
 	}
 }
 
-
 /* When load is set:
-* 		Red LED = on
-* 		Green LED = off
-* When load is shed:
-* 		Red LED = off
-* 		Green LED = on */
+ * 		Red LED = on
+ * 		Green LED = off
+ * When load is shed:
+ * 		Red LED = off
+ * 		Green LED = on */
 static void pollWallSwitchesTask(void *pvParameters)
 {
 	int wallSwitch = 0;
-	
+
 	/* Initially, all LED's green */
 	IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, 255);
 
@@ -93,7 +126,6 @@ static void pollWallSwitchesTask(void *pvParameters)
 
 		vTaskDelay(1000);
 	}
-
 }
 
 /*
@@ -101,17 +133,32 @@ static void pollWallSwitchesTask(void *pvParameters)
  */
 int main(void)
 {
-	/* Register FAU */
+	alt_up_ps2_dev *keyboard = alt_up_ps2_open_dev(PS2_NAME);
+
+	if (keyboard == NULL)
+	{
+		printf("can't find PS/2 device\n");
+		return 1;
+	}
+
+	alt_up_ps2_clear_fifo(keyboard);
+
+	/* Register FAU & keyboard */
 	alt_irq_register(FREQUENCY_ANALYSER_IRQ, 0, readFrequencyISR);
+	alt_irq_register(PS2_IRQ, keyboard, readKeyboardISR);
+
+	/* Register keyboard interrupt */
+	IOWR_8DIRECT(PS2_BASE, 4, 1);
 
 	/* The RegTest tasks as described at the top of this file. */
-	xTaskCreate( processSignalTask, "processSignal", configMINIMAL_STACK_SIZE, mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY, NULL);
-	xTaskCreate( pollWallSwitchesTask, "pollWallSwitches", configMINIMAL_STACK_SIZE, mainREG_TEST_2_PARAMETER, mainREG_TEST_PRIORITY, NULL);
+	xTaskCreate(processSignalTask, "processSignal", configMINIMAL_STACK_SIZE, mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY, NULL);
+	xTaskCreate(pollWallSwitchesTask, "pollWallSwitches", configMINIMAL_STACK_SIZE, mainREG_TEST_2_PARAMETER, mainREG_TEST_PRIORITY, NULL);
 
 	/* Finally start the scheduler. */
 	vTaskStartScheduler();
 
 	/* Will only reach here if there is insufficient heap available to start
 	 the scheduler. */
-	for (;;);
+	for (;;)
+		;
 }
