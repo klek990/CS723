@@ -27,11 +27,11 @@
 
 #define normalState 0
 #define loadState 1
-#define managementState 2
+#define maintenanceState 2
 
 /* Semaphores */
 /* 0 = Normal, 1 = Load managing, 2 = Maintenance */
-SemaphoreHandle_t systemState;
+SemaphoreHandle_t systemStateSemaphore;
 
 /* Frequency thresholds configured using keyboard */
 SemaphoreHandle_t lowerThreshold;
@@ -46,6 +46,10 @@ static void manageSystemStateTask(void *pvParameters);
 
 /* Global frequency variables to be passed in queues */
 float freqNext = 0, freqPrev = 0, freqRoC = 0;
+
+//For system state management
+int prevStateBeforeMaintenance = 1; 
+int currentSystemState = 1;
 
 /* Read signal from onboard FAU and do calculations */
 void readFrequencyISR()
@@ -108,7 +112,7 @@ static void readKeyboardISR(void *context, alt_u32 id)
 static void maintenanceStateISR(void *context)
 {
 	printf("works");
-	int passToQueue = managementState;
+	int passToQueue = maintenanceState;
 	if (xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS)
 	{
 		printf("\nMaintenance State sucessfully sent to SystemStateQueue");
@@ -158,25 +162,26 @@ static void pollWallSwitchesTask(void *pvParameters)
 static void manageSystemStateTask(void *pvParameters)
 {
 	int latestStateValue;
-
 	while (1)
 	{
-
 		if (xSystemStateQueue != NULL)
 		{
 			// Consume the value stored in the SystemStateQueue
 			if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS)
 			{
-				printf("\nQueue Value Consumed: System State Is Now: %d", latestStateValue);
+				SemaphoreTake(systemStateSemaphore);
+				//Critical Section
+
+				
+				SemaphoreGive(systemStateSemaphore);
+				printf("\nQueue Value Consumed: System State Is Now: %d", currentSystemState);
 			}
 			else
 			{
 				printf("\nNo QUEUE RECEIVED UPDATE");
 			}
-			// Take the semaphore
 		}
 		vTaskDelay(1000);
-		// If there are two consecutive "2", the state needs to be set to
 	}
 }
 
@@ -236,6 +241,17 @@ int main(void)
 	else
 	{
 		printf("\nSystemStateQueue Created Successfully");
+	}
+
+	systemStateSemaphore = xSemaphoreCreateBinary();
+	if (xSystemStateQueue == NULL)
+	{
+		printf("\nUnable to Create systemState Semaphore");
+	}
+	else
+	{
+		xSemaphoreGive(systemStateSemaphore);
+		printf("\n System State Semaphore successfully created");
 	}
 
 	/* Finally start the scheduler. */
