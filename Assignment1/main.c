@@ -108,6 +108,7 @@ void readKeyboardISR(void *context, alt_u32 id)
 }
 
 void maintenanceStateISR(void *context){
+	int passToQueue = managementState;
 	if(xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS){
 		"\nMaintenance State sucessfully sent to SystemStateQueue"
 	};
@@ -153,22 +154,22 @@ static void manageSystemStateTask(void *pvParameters)
 {	
 	int latestStateValue;
 
+
 	while(1)
 	{
+		
 		if(xSystemStateQueue != NULL){
-
 			//Consume the value stored in the SystemStateQueue
-			if(xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS){
-					printf("\nQueue Value Consumed: System State Is Now: %d", latestStateValue);
+			if(xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS) {
+				printf("\nQueue Value Consumed: System State Is Now: %d", latestStateValue);
 			}
-			else 
-			{
+			else {
 				printf("\nQueue Read Failed");
 			}
+			//Take the semaphore
 
 
 		}
-
 		//If there are two consecutive "2", the state needs to be set to 
 	}
 }
