@@ -19,6 +19,7 @@
  the parameter passing mechanism is working correctly. */
 #define mainREG_TEST_1_PARAMETER ((void *)0x12345678)
 #define mainREG_TEST_2_PARAMETER ((void *)0x87654321)
+#define mainREG_TEST_2_PARAMETER ((void *)0x12348765)
 #define mainREG_TEST_PRIORITY (tskIDLE_PRIORITY + 1)
 #define SAMPLINGFREQUENCY 16e3
 
@@ -106,7 +107,7 @@ void readKeyboardISR(void *context, alt_u32 id)
 }
 
 void maintenanceStateISR(void *context){
-	
+
 	if(xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS){
 		"\nMaintenance State sucessfully sent to SystemStateQueue"
 	};
@@ -150,9 +151,13 @@ static void pollWallSwitchesTask(void *pvParameters)
 
 int initCreateTasks(void){
 	xTaskCreate(processSignalTask, "processSignal", configMINIMAL_STACK_SIZE, 
-		mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY, NULL);
+		mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
+
 	xTaskCreate(pollWallSwitchesTask, "pollWallSwitches", configMINIMAL_STACK_SIZE, 
 		mainREG_TEST_2_PARAMETER, mainREG_TEST_PRIORITY, NULL);
+
+	xTaskCreate(manageSystemStateTask, "manageSystemStateTask", configMINIMAL_STACK_SIZE, 
+		mainREG_TEST_3_PARAMETER, mainREG_TEST_PRIORITY + 3, NULL);
 
 	return 0;
 }
