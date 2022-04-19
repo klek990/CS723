@@ -128,6 +128,15 @@ static void pollWallSwitchesTask(void *pvParameters)
 	}
 }
 
+int initCreateTasks(void){
+	xTaskCreate(processSignalTask, "processSignal", configMINIMAL_STACK_SIZE, 
+		mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY, NULL);
+	xTaskCreate(pollWallSwitchesTask, "pollWallSwitches", configMINIMAL_STACK_SIZE, 
+		mainREG_TEST_2_PARAMETER, mainREG_TEST_PRIORITY, NULL);
+
+	return 0;
+}
+
 /*
  * Create the demo tasks then start the scheduler.
  */
@@ -147,12 +156,16 @@ int main(void)
 	alt_irq_register(FREQUENCY_ANALYSER_IRQ, 0, readFrequencyISR);
 	alt_irq_register(PS2_IRQ, keyboard, readKeyboardISR);
 
+	/* Register Button for Maintenance State */
+	alt_irq_register(PUSH_BUTTON_IRQ, 0, maintenanceStateIRQ);
+
+
+
 	/* Register keyboard interrupt */
 	IOWR_8DIRECT(PS2_BASE, 4, 1);
 
 	/* The RegTest tasks as described at the top of this file. */
-	xTaskCreate(processSignalTask, "processSignal", configMINIMAL_STACK_SIZE, mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY, NULL);
-	xTaskCreate(pollWallSwitchesTask, "pollWallSwitches", configMINIMAL_STACK_SIZE, mainREG_TEST_2_PARAMETER, mainREG_TEST_PRIORITY, NULL);
+	initCreateTasks();
 
 	/* Finally start the scheduler. */
 	vTaskStartScheduler();
