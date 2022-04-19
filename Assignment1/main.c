@@ -69,7 +69,7 @@ void readFrequencyISR()
 }
 
 /*  */
-void readKeyboardISR(void *context, alt_u32 id)
+static void readKeyboardISR(void *context, alt_u32 id)
 {
 	char ascii;
 	int status = 0;
@@ -105,8 +105,9 @@ void readKeyboardISR(void *context, alt_u32 id)
 	return;
 }
 
-void maintenanceStateISR(void *context)
+static void maintenanceStateISR(void *context)
 {
+	printf("works");
 	int passToQueue = managementState;
 	if (xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS)
 	{
@@ -117,7 +118,7 @@ void maintenanceStateISR(void *context)
 		printf("\nMaintenance State NOT SENT");
 	}
 	// Clear edge capture register
-	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_BASE, 0x00);
+	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_BASE, 0x01);
 }
 
 /* This should be used to send the signal information to the other tasks */
@@ -216,7 +217,7 @@ int main(void)
 	IOWR_8DIRECT(PS2_BASE, 4, 1);
 
 	/* Clear edge cap register */
-	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_BASE, 0x00);
+	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_BASE, 0x01);
 
 	// Enable Interrupts to button 1
 	IOWR_ALTERA_AVALON_PIO_IRQ_MASK(PUSH_BUTTON_BASE, 0x01);
@@ -234,7 +235,7 @@ int main(void)
 	}
 	else
 	{
-		printf("\nSystemStateQueue Created Successfully")
+		printf("\nSystemStateQueue Created Successfully");
 	}
 
 	/* Finally start the scheduler. */
