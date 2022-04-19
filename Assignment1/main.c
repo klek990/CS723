@@ -110,7 +110,7 @@ void readKeyboardISR(void *context, alt_u32 id)
 void maintenanceStateISR(void *context){
 	int passToQueue = managementState;
 	if(xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS){
-		"\nMaintenance State sucessfully sent to SystemStateQueue"
+		printf("\nMaintenance State sucessfully sent to SystemStateQueue");
 	};
 	//Clear edge capture register
 	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_PIO_BASE, 0x00);
