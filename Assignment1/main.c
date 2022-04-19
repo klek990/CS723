@@ -19,7 +19,7 @@
  the parameter passing mechanism is working correctly. */
 #define mainREG_TEST_1_PARAMETER ((void *)0x12345678)
 #define mainREG_TEST_2_PARAMETER ((void *)0x87654321)
-#define mainREG_TEST_2_PARAMETER ((void *)0x12348765)
+#define mainREG_TEST_3_PARAMETER ((void *)0x12348765)
 #define mainREG_TEST_PRIORITY (tskIDLE_PRIORITY + 1)
 #define SAMPLINGFREQUENCY 16e3
 
@@ -29,7 +29,6 @@
 #define loadState 1
 #define managementState 2
 
-
 /* Semaphores */
 /* 0 = Normal, 1 = Load managing, 2 = Maintenance */
 SemaphoreHandle_t systemState;
@@ -38,9 +37,8 @@ SemaphoreHandle_t systemState;
 SemaphoreHandle_t lowerThreshold;
 SemaphoreHandle_t upperThreshold;
 
-//Define Queue for SystemState
+// Define Queue for SystemState
 static QueueHandle_t xSystemStateQueue;
-
 
 static void processSignalTask(void *pvParameters);
 static void pollWallSwitchesTask(void *pvParameters);
@@ -107,15 +105,19 @@ void readKeyboardISR(void *context, alt_u32 id)
 	return;
 }
 
-void maintenanceStateISR(void *context){
+void maintenanceStateISR(void *context)
+{
 	int passToQueue = managementState;
-	if(xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS){
+	if (xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS)
+	{
 		printf("\nMaintenance State sucessfully sent to SystemStateQueue");
-	} else {
+	}
+	else
+	{
 		printf("\nMaintenance State NOT SENT");
 	}
-	//Clear edge capture register
-	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_PIO_BASE, 0x00);
+	// Clear edge capture register
+	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_BASE, 0x00);
 }
 
 /* This should be used to send the signal information to the other tasks */
@@ -153,41 +155,40 @@ static void pollWallSwitchesTask(void *pvParameters)
 }
 
 static void manageSystemStateTask(void *pvParameters)
-{	
+{
 	int latestStateValue;
 
-
-	while(1)
+	while (1)
 	{
-		
-		if(xSystemStateQueue != NULL){
-			//Consume the value stored in the SystemStateQueue
-			if(xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS) {
+
+		if (xSystemStateQueue != NULL)
+		{
+			// Consume the value stored in the SystemStateQueue
+			if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS)
+			{
 				printf("\nQueue Value Consumed: System State Is Now: %d", latestStateValue);
 			}
-			else {
+			else
+			{
 				printf("\nNo QUEUE RECEIVED UPDATE");
 			}
-			//Take the semaphore
-
-
+			// Take the semaphore
 		}
-		//If there are two consecutive "2", the state needs to be set to 
+		vTaskDelay(1000);
+		// If there are two consecutive "2", the state needs to be set to
 	}
 }
 
+int initCreateTasks(void)
+{
+	xTaskCreate(processSignalTask, "processSignal", configMINIMAL_STACK_SIZE,
+				mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
 
+	xTaskCreate(pollWallSwitchesTask, "pollWallSwitches", configMINIMAL_STACK_SIZE,
+				mainREG_TEST_2_PARAMETER, mainREG_TEST_PRIORITY, NULL);
 
-
-int initCreateTasks(void){
-	xTaskCreate(processSignalTask, "processSignal", configMINIMAL_STACK_SIZE, 
-		mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
-
-	xTaskCreate(pollWallSwitchesTask, "pollWallSwitches", configMINIMAL_STACK_SIZE, 
-		mainREG_TEST_2_PARAMETER, mainREG_TEST_PRIORITY, NULL);
-
-	xTaskCreate(manageSystemStateTask, "manageSystemStateTask", configMINIMAL_STACK_SIZE, 
-		mainREG_TEST_3_PARAMETER, mainREG_TEST_PRIORITY + 3, NULL);
+	xTaskCreate(manageSystemStateTask, "manageSystemStateTask", configMINIMAL_STACK_SIZE,
+				mainREG_TEST_3_PARAMETER, mainREG_TEST_PRIORITY + 3, NULL);
 
 	return 0;
 }
@@ -215,29 +216,29 @@ int main(void)
 	IOWR_8DIRECT(PS2_BASE, 4, 1);
 
 	/* Clear edge cap register */
-	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_PIO_BASE, 0x00);
+	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_BASE, 0x00);
 
-	//Enable Interrupts to button 1
-	IOWR_ALTERA_AVALON_PIO_IRQ_MASK(PUSH_BUTTON_PIO_BASE, 0x01);
+	// Enable Interrupts to button 1
+	IOWR_ALTERA_AVALON_PIO_IRQ_MASK(PUSH_BUTTON_BASE, 0x01);
 
 	/* Register Button ISR */
-	alt_irq_register(PUSH_BUTTON_PIO_IRQ, 0, maintenanceStateISR);
+	alt_irq_register(PUSH_BUTTON_IRQ, 0, maintenanceStateISR);
 
 	/* The RegTest tasks as described at the top of this file. */
 	initCreateTasks();
 
 	xSystemStateQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
-	if(xSystemStateQueue == NULL){
+	if (xSystemStateQueue == NULL)
+	{
 		printf("\nUnable to Create Integer SystemStateQueue");
-	} 
-	else {
+	}
+	else
+	{
 		printf("\nSystemStateQueue Created Successfully")
 	}
 
 	/* Finally start the scheduler. */
 	vTaskStartScheduler();
-
-
 
 	/* Will only reach here if there is insufficient heap available to start
 	 the scheduler. */
