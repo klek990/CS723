@@ -161,7 +161,8 @@ static void manageSystemStateTask(void *pvParameters)
 			if(xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS){
 					printf("\nQueue Value Consumed: System State Is Now: %d", latestStateValue);
 			}
-			else {
+			else 
+			{
 				printf("\nQueue Read Failed");
 			}
 
@@ -169,7 +170,6 @@ static void manageSystemStateTask(void *pvParameters)
 		}
 
 		//If there are two consecutive "2", the state needs to be set to 
-		}
 	}
 }
 
@@ -213,7 +213,7 @@ int main(void)
 
 	/* Clear edge cap register */
 	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_PIO_BASE, 0x00);
-	
+
 	//Enable Interrupts to button 1
 	IOWR_ALTERA_AVALON_PIO_IRQ_MASK(PUSH_BUTTON_PIO_BASE, 0x01);
 
