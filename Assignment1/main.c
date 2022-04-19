@@ -44,6 +44,7 @@ static QueueHandle_t xSystemStateQueue;
 
 static void processSignalTask(void *pvParameters);
 static void pollWallSwitchesTask(void *pvParameters);
+static void manageSystemStateTask(void *pvParameters);
 
 /* Global frequency variables to be passed in queues */
 float freqNext = 0, freqPrev = 0, freqRoC = 0;
@@ -107,7 +108,6 @@ void readKeyboardISR(void *context, alt_u32 id)
 }
 
 void maintenanceStateISR(void *context){
-
 	if(xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS){
 		"\nMaintenance State sucessfully sent to SystemStateQueue"
 	};
@@ -149,6 +149,33 @@ static void pollWallSwitchesTask(void *pvParameters)
 	}
 }
 
+static void manageSystemStateTask(void *pvParameters)
+{	
+	int latestStateValue;
+
+	while(1)
+	{
+		if(xSystemStateQueue != NULL){
+
+			//Consume the value stored in the SystemStateQueue
+			if(xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS){
+					printf("\nQueue Value Consumed: System State Is Now: %d", latestStateValue);
+			}
+			else {
+				printf("\nQueue Read Failed");
+			}
+
+
+		}
+
+		//If there are two consecutive "2", the state needs to be set to 
+		}
+	}
+}
+
+
+
+
 int initCreateTasks(void){
 	xTaskCreate(processSignalTask, "processSignal", configMINIMAL_STACK_SIZE, 
 		mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
@@ -184,23 +211,20 @@ int main(void)
 	/* Register keyboard interrupt */
 	IOWR_8DIRECT(PS2_BASE, 4, 1);
 
-	//Enable Interrupts to button 1
-	IOWR_ALTERA_AVALON_PIO_IRQ_MASK(PUSH_BUTTON_PIO_BASE, 0x01);
 	/* Clear edge cap register */
 	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_PIO_BASE, 0x00);
-	/* Register ISR */
-	alt_ic_isr_register(PUSH_BUTTON_IRQ_INTERRUPT_CONTROLLER_ID,
-			PUSH_BUTTON_PIO_IRQ,
-			&maintenanceStateISR,
-			NULL,
-			NULL
-	);
+	
+	//Enable Interrupts to button 1
+	IOWR_ALTERA_AVALON_PIO_IRQ_MASK(PUSH_BUTTON_PIO_BASE, 0x01);
+
+	/* Register Button ISR */
+	alt_irq_register(PUSH_BUTTON_PIO_IRQ, 0, maintenanceStateISR);
 
 	/* The RegTest tasks as described at the top of this file. */
 	initCreateTasks();
 
 	xSystemStateQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
-	if(xSystemStateQueue == 0){
+	if(xSystemStateQueue == NULL){
 		printf("\nUnable to Create Integer SystemStateQueue");
 	} 
 	else {
