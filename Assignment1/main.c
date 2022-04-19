@@ -166,7 +166,7 @@ static void manageSystemStateTask(void *pvParameters)
 				printf("\nQueue Value Consumed: System State Is Now: %d", latestStateValue);
 			}
 			else {
-				printf("\nQueue Read Failed");
+				printf("\nNo QUEUE RECEIVED UPDATE");
 			}
 			//Take the semaphore
 
