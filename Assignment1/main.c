@@ -203,11 +203,9 @@ static void manageSystemStateTask(void *pvParameters)
 						maintenanceActivated = false;
 					}
 				}
-
-				currentSystemState = latestStateValue;
 				
 				SemaphoreGive(xSystemStateSemaphore);
-				printf("\nQueue Value Consumed: System State Is Now: %d", currentSystemState);
+				printf("\nQueue Value Consumed: %d, System State Is Now: %d", latestStateValue, currentSystemState);
 			}
 			else
 			{
