@@ -4,6 +4,7 @@
 #include <string.h>
 #include <system.h>
 #include <altera_avalon_pio_regs.h>
+#include <stdbool.h>
 #include "io.h"
 #include "sys/alt_irq.h"
 #include "altera_up_avalon_ps2.h"
@@ -37,8 +38,9 @@ SemaphoreHandle_t xSystemStateSemaphore;
 SemaphoreHandle_t lowerThreshold;
 SemaphoreHandle_t upperThreshold;
 
-// Define Queue for SystemState
+// Define Queues
 static QueueHandle_t xSystemStateQueue;
+static QueueHandle_t xLoadControlQueue;
 
 static void processSignalTask(void *pvParameters);
 static void pollWallSwitchesTask(void *pvParameters);
@@ -66,9 +68,9 @@ void readFrequencyISR()
 
 	freqRoC = ((freqNext - freqPrev) * SAMPLINGFREQUENCY) / avgSamples;
 
-	printf("Freq Next: %0.2f\n", freqNext);
-	printf("Freq Prev: %0.2f\n", freqPrev);
-	printf("Freq RoC: %0.2f\n", freqRoC);
+	// printf("Freq Next: %0.2f\n", freqNext);
+	// printf("Freq Prev: %0.2f\n", freqPrev);
+	// printf("Freq RoC: %0.2f\n", freqRoC);
 
 	return;
 }
@@ -142,18 +144,28 @@ static void processSignalTask(void *pvParameters)
  * 		Green LED = on */
 static void pollWallSwitchesTask(void *pvParameters)
 {
-	int wallSwitch = 0;
+	int wallSwitchToQueue = 0;
 
 	/* Initially, all LED's green */
 	IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, 255);
 
 	while (1)
 	{
-		/* Read which wall switch is triggered */
-		wallSwitch = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111111;
+		if (maintenanceActivated)
+		{
+			/* Read which wall switch is triggered */
+			wallSwitchToQueue = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111111;
 
-		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitch);
-		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE & 0b11111111, ~wallSwitch);
+			if (xQueueSend(xLoadControlQueue, &wallSwitchToQueue, NULL) == pdPASS)
+			{
+				printf("Wall Switch triggered. Sending to queue");
+				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchToQueue);
+				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE & 0b11111111, ~wallSwitchToQueue);
+			}
+			
+
+			
+		}
 
 		vTaskDelay(1000);
 	}
@@ -264,6 +276,7 @@ int main(void)
 	initCreateTasks();
 
 	xSystemStateQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
+	xLoadControlQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
 	if (xSystemStateQueue == NULL)
 	{
 		printf("\nUnable to Create Integer SystemStateQueue");
@@ -274,6 +287,7 @@ int main(void)
 	}
 
 	xSystemStateSemaphore = xSemaphoreCreateBinary();
+	
 	if (xSystemStateSemaphore == NULL)
 	{
 		printf("\nUnable to Create systemState Semaphore");
