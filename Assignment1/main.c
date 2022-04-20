@@ -45,9 +45,9 @@ static QueueHandle_t xLoadControlQueue;
 
 struct signalInfoStruct
 {
-	float freqRoC;
+	float currentRoC;
 	float currentFreq;
-	float period;
+	float currentPeriod;
 } signalInfo;
 
 static void processSignalTask(void *pvParameters);
@@ -80,9 +80,9 @@ void readFrequencyISR()
 
 	freqRoC = ((freqNext - freqPrev) * SAMPLINGFREQUENCY) / avgSamples;
 
-	// printf("Freq Next: %0.2f\n", freqNext);
-	// printf("Freq Prev: %0.2f\n", freqPrev);
-	// printf("Freq RoC: %0.2f\n", freqRoC);
+	printf("Freq Next: %0.2f\n", freqNext);
+	printf("Freq Prev: %0.2f\n", freqPrev);
+	printf("Freq RoC: %0.2f\n", freqRoC);
 
 	return;
 }
@@ -129,7 +129,7 @@ static void maintenanceStateISR(void *context)
 	int passToQueue = maintenanceState;
 	if (xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS)
 	{
-		printf("\nMaintenance State sucessfully sent to SystemStateQueue");
+		printf("\nMaintenance State sucessfully sent to SystemStateQueue\n");
 	}
 	else
 	{
@@ -145,13 +145,18 @@ static void processSignalTask(void *pvParameters)
 	while (1)
 	{
 		signalInfo.currentFreq = freqNext;
-		signalInfo.freqRoC = freqRoC;
-		signalInfo.period = period;
+		signalInfo.currentRoC = freqRoC;
+		signalInfo.currentPeriod = period;
 
 		if (xQueueSend(xSignalInfoQueue, &signalInfo, NULL) == pdPASS)
 		{
 			printf("signalInfoStruct sent to queue\n");
 		}
+		else
+		{
+			printf("%f, %f, %f", freqNext, freqRoC, period);
+		}
+		vTaskDelay(1000);
 	}
 }
 
@@ -170,6 +175,7 @@ static void pollWallSwitchesTask(void *pvParameters)
 
 	while (1)
 	{
+		printf("%d\n", maintenanceActivated);
 		if (maintenanceActivated)
 		{
 			/* Read which wall switch is triggered */
@@ -177,7 +183,7 @@ static void pollWallSwitchesTask(void *pvParameters)
 
 			if (xQueueSend(xLoadControlQueue, &wallSwitchToQueue, NULL) == pdPASS)
 			{
-				printf("Wall Switch triggered. Sending to queue");
+				printf("Wall Switch triggered. Sending to queue\n");
 				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchToQueue);
 				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE & 0b11111111, ~wallSwitchToQueue);
 			}
@@ -197,7 +203,7 @@ static void manageSystemStateTask(void *pvParameters)
 			// Consume the value stored in the SystemStateQueue
 			if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS)
 			{
-				SemaphoreTake(xSystemStateSemaphore);
+				xSemaphoreTake(xSystemStateSemaphore, portMAX_DELAY);
 				// Critical Section
 
 				// If maintenance not activated, normal operation
@@ -234,15 +240,15 @@ static void manageSystemStateTask(void *pvParameters)
 					}
 				}
 
-				SemaphoreGive(xSystemStateSemaphore);
-				printf("\nQueue Value Consumed: %d, System State Is Now: %d", latestStateValue, currentSystemState);
+				xSemaphoreGive(xSystemStateSemaphore);
+				printf("\nQueue Value Consumed: %d, System State Is Now: %d\n", latestStateValue, currentSystemState);
 			}
 			else
 			{
 				// printf("\nNo QUEUE RECEIVED UPDATE");
 			}
 		}
-		vTaskDelay(100);
+		vTaskDelay(1000);
 	}
 }
 
