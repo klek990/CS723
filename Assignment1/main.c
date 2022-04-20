@@ -31,7 +31,7 @@
 
 /* Semaphores */
 /* 0 = Normal, 1 = Load managing, 2 = Maintenance */
-SemaphoreHandle_t systemStateSemaphore;
+SemaphoreHandle_t xSystemStateSemaphore;
 
 /* Frequency thresholds configured using keyboard */
 SemaphoreHandle_t lowerThreshold;
@@ -50,6 +50,7 @@ float freqNext = 0, freqPrev = 0, freqRoC = 0;
 //For system state management
 int prevStateBeforeMaintenance = 1; 
 int currentSystemState = 1;
+bool maintenanceActivated = false;
 
 /* Read signal from onboard FAU and do calculations */
 void readFrequencyISR()
@@ -111,7 +112,6 @@ static void readKeyboardISR(void *context, alt_u32 id)
 
 static void maintenanceStateISR(void *context)
 {
-	printf("works");
 	int passToQueue = maintenanceState;
 	if (xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS)
 	{
@@ -119,7 +119,7 @@ static void maintenanceStateISR(void *context)
 	}
 	else
 	{
-		printf("\nMaintenance State NOT SENT");
+		//printf("\nMaintenance State NOT SENT");
 	}
 	// Clear edge capture register
 	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_BASE, 0x01);
@@ -169,19 +169,49 @@ static void manageSystemStateTask(void *pvParameters)
 			// Consume the value stored in the SystemStateQueue
 			if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS)
 			{
-				SemaphoreTake(systemStateSemaphore);
+				SemaphoreTake(xSystemStateSemaphore);
 				//Critical Section
 
+				//If maintenance not activated, normal operation
+				if(!maintenanceActivated){
+					//check to see if maintenance state is the latestvalue
+					if(latestStateValue == maintenanceState){
+						//Save the current state before maintenance
+						prevStateBeforeMaintenance = currentSystemState;
+
+						//Update the current state to the maintanenace state
+						currentSystemState = maintenanceState;
+
+						//Activate the maintenance flag
+						maintenanceActivated = true;
+					} 
+					else {
+						//Normal Operation
+						currentSystemState = latestStateValue;
+					}
+				} 
+				else {
+					//Ignore all other values unless it is button, then restore last non maintenance state
+					//Maintenance State stops load management, there
+					if(latestStateValue == maintenanceState){
+
+						//Restore the system to what it was before
+						currentSystemState = prevStateBeforeMaintenance;
+						maintenanceActivated = false;
+					}
+				}
+
+				currentSystemState = latestStateValue;
 				
-				SemaphoreGive(systemStateSemaphore);
+				SemaphoreGive(xSystemStateSemaphore);
 				printf("\nQueue Value Consumed: System State Is Now: %d", currentSystemState);
 			}
 			else
 			{
-				printf("\nNo QUEUE RECEIVED UPDATE");
+				//printf("\nNo QUEUE RECEIVED UPDATE");
 			}
 		}
-		vTaskDelay(1000);
+		vTaskDelay(100);
 	}
 }
 
@@ -243,14 +273,14 @@ int main(void)
 		printf("\nSystemStateQueue Created Successfully");
 	}
 
-	systemStateSemaphore = xSemaphoreCreateBinary();
+	xSystemStateSemaphore = xSemaphoreCreateBinary();
 	if (xSystemStateSemaphore == NULL)
 	{
 		printf("\nUnable to Create systemState Semaphore");
 	}
 	else
 	{
-		xSemaphoreGive(systemStateSemaphore);
+		xSemaphoreGive(xSystemStateSemaphore);
 		printf("\n System State Semaphore successfully created");
 	}
 
