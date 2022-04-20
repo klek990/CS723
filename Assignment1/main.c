@@ -43,6 +43,13 @@ static QueueHandle_t xSignalInfoQueue;
 static QueueHandle_t xSystemStateQueue;
 static QueueHandle_t xLoadControlQueue;
 
+struct signalInfoStruct
+{
+	float freqRoC;
+	float currentFreq;
+	float period;
+} signalInfo;
+
 static void processSignalTask(void *pvParameters);
 static void pollWallSwitchesTask(void *pvParameters);
 static void manageSystemStateTask(void *pvParameters);
@@ -137,19 +144,13 @@ static void processSignalTask(void *pvParameters)
 {
 	while (1)
 	{
-		if (xQueueSend(xSignalInfoQueue, &freqNext, NULL) == pdPASS)
-		{
-			printf("Frequency sent to signalInfoQueue\n");
-		}
+		signalInfo.currentFreq = freqNext;
+		signalInfo.freqRoC = freqRoC;
+		signalInfo.period = period;
 
-		if (xQueueSend(xSignalInfoQueue, &freqRoC, NULL) == pdPASS)
+		if (xQueueSend(xSignalInfoQueue, &signalInfo, NULL) == pdPASS)
 		{
-			printf("Frequency RoC sent to signalInfoQueue\n");
-		}
-
-		if (xQueueSend(xSignalInfoQueue, &period, NULL) == pdPASS)
-		{
-			printf("Period sent to signalInfoQueue\n");
+			printf("signalInfoStruct sent to queue\n");
 		}
 	}
 }
@@ -295,7 +296,7 @@ int main(void)
 
 	xSystemStateQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
 	xLoadControlQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
-	xSignalInfoQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
+	xSignalInfoQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct signalInfoStruct));
 	if (xSystemStateQueue == NULL)
 	{
 		printf("\nUnable to Create Integer SystemStateQueue");
