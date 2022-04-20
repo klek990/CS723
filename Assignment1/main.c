@@ -244,7 +244,7 @@ int main(void)
 	}
 
 	systemStateSemaphore = xSemaphoreCreateBinary();
-	if (xSystemStateQueue == NULL)
+	if (xSystemStateSemaphore == NULL)
 	{
 		printf("\nUnable to Create systemState Semaphore");
 	}
