@@ -39,6 +39,7 @@ SemaphoreHandle_t lowerThreshold;
 SemaphoreHandle_t upperThreshold;
 
 // Define Queues
+static QueueHandle_t xSignalInfoQueue;
 static QueueHandle_t xSystemStateQueue;
 static QueueHandle_t xLoadControlQueue;
 
@@ -47,15 +48,14 @@ static void pollWallSwitchesTask(void *pvParameters);
 static void manageSystemStateTask(void *pvParameters);
 
 /* Global frequency variables to be passed in queues */
-float freqNext = 0, freqPrev = 0, freqRoC = 0;
+float freqNext = 0, freqPrev = 0, freqRoC = 0, period = 0;
 
-//For system state management
-int prevStateBeforeMaintenance = 1; 
+// For system state management
+int prevStateBeforeMaintenance = 1;
 bool maintenanceActivated = false;
 
-//MUST BE PROTECTED
+// MUST BE PROTECTED
 int currentSystemState = 1;
-
 
 /* Read signal from onboard FAU and do calculations */
 void readFrequencyISR()
@@ -68,6 +68,8 @@ void readFrequencyISR()
 
 	freqPrev = SAMPLINGFREQUENCY / (float)samplesPrev;
 	freqNext = SAMPLINGFREQUENCY / (float)samplesNext;
+
+	period = freqNext / (float)2;
 
 	freqRoC = ((freqNext - freqPrev) * SAMPLINGFREQUENCY) / avgSamples;
 
@@ -124,7 +126,7 @@ static void maintenanceStateISR(void *context)
 	}
 	else
 	{
-		//printf("\nMaintenance State NOT SENT");
+		// printf("\nMaintenance State NOT SENT");
 	}
 	// Clear edge capture register
 	IOWR_ALTERA_AVALON_PIO_EDGE_CAP(PUSH_BUTTON_BASE, 0x01);
@@ -135,7 +137,20 @@ static void processSignalTask(void *pvParameters)
 {
 	while (1)
 	{
-		vTaskDelay(1000);
+		if (xQueueSend(xSignalInfoQueue, &freqNext, NULL) == pdPASS)
+		{
+			printf("Frequency sent to signalInfoQueue\n");
+		}
+
+		if (xQueueSend(xSignalInfoQueue, &freqRoC, NULL) == pdPASS)
+		{
+			printf("Frequency RoC sent to signalInfoQueue\n");
+		}
+
+		if (xQueueSend(xSignalInfoQueue, &period, NULL) == pdPASS)
+		{
+			printf("Period sent to signalInfoQueue\n");
+		}
 	}
 }
 
@@ -165,9 +180,6 @@ static void pollWallSwitchesTask(void *pvParameters)
 				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchToQueue);
 				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE & 0b11111111, ~wallSwitchToQueue);
 			}
-			
-
-			
 		}
 
 		vTaskDelay(1000);
@@ -185,43 +197,48 @@ static void manageSystemStateTask(void *pvParameters)
 			if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS)
 			{
 				SemaphoreTake(xSystemStateSemaphore);
-				//Critical Section
+				// Critical Section
 
-				//If maintenance not activated, normal operation
-				if(!maintenanceActivated){
-					//check to see if maintenance state is the latestvalue
-					if(latestStateValue == maintenanceState){
-						//Save the current state before maintenance
+				// If maintenance not activated, normal operation
+				if (!maintenanceActivated)
+				{
+					// check to see if maintenance state is the latestvalue
+					if (latestStateValue == maintenanceState)
+					{
+						// Save the current state before maintenance
 						prevStateBeforeMaintenance = currentSystemState;
 
-						//Update the current state to the maintanenace state
+						// Update the current state to the maintanenace state
 						currentSystemState = maintenanceState;
 
-						//Activate the maintenance flag
+						// Activate the maintenance flag
 						maintenanceActivated = true;
-					} 
-					else {
-						//Normal Operation
+					}
+					else
+					{
+						// Normal Operation
 						currentSystemState = latestStateValue;
 					}
-				} 
-				else {
-					//Ignore all other values unless it is button, then restore last non maintenance state
-					//Maintenance State stops load management, there
-					if(latestStateValue == maintenanceState){
+				}
+				else
+				{
+					// Ignore all other values unless it is button, then restore last non maintenance state
+					// Maintenance State stops load management, there
+					if (latestStateValue == maintenanceState)
+					{
 
-						//Restore the system to what it was before
+						// Restore the system to what it was before
 						currentSystemState = prevStateBeforeMaintenance;
 						maintenanceActivated = false;
 					}
 				}
-				
+
 				SemaphoreGive(xSystemStateSemaphore);
 				printf("\nQueue Value Consumed: %d, System State Is Now: %d", latestStateValue, currentSystemState);
 			}
 			else
 			{
-				//printf("\nNo QUEUE RECEIVED UPDATE");
+				// printf("\nNo QUEUE RECEIVED UPDATE");
 			}
 		}
 		vTaskDelay(100);
@@ -278,6 +295,7 @@ int main(void)
 
 	xSystemStateQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
 	xLoadControlQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
+	xSignalInfoQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
 	if (xSystemStateQueue == NULL)
 	{
 		printf("\nUnable to Create Integer SystemStateQueue");
@@ -288,7 +306,7 @@ int main(void)
 	}
 
 	xSystemStateSemaphore = xSemaphoreCreateBinary();
-	
+
 	if (xSystemStateSemaphore == NULL)
 	{
 		printf("\nUnable to Create systemState Semaphore");
