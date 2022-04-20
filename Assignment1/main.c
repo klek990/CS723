@@ -51,8 +51,11 @@ float freqNext = 0, freqPrev = 0, freqRoC = 0;
 
 //For system state management
 int prevStateBeforeMaintenance = 1; 
-int currentSystemState = 1;
 bool maintenanceActivated = false;
+
+//MUST BE PROTECTED
+int currentSystemState = 1;
+
 
 /* Read signal from onboard FAU and do calculations */
 void readFrequencyISR()
