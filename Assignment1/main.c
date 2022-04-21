@@ -299,7 +299,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 
 				//Signify that the load management state is needed
 				systemStateUpdateValue = loadState;
-				if (xQueueSend(xSystemStateQueue, &systemStateUpdateValue, NULL) == pdPASS)
+				if (xQueueSend(xSignalStateQueue, &systemStateUpdateValue, NULL) == pdPASS)
 				{
 					printf("\nLoad Managing State sucessfully sent to SystemStateQueue\n");
 				}
