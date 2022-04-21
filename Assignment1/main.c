@@ -15,6 +15,7 @@
 #include "FreeRTOS/task.h"
 #include "FreeRTOS/queue.h"
 #include "freertos/semphr.h"
+#include "FreeRTOS/timers.h"
 
 /* The parameters passed to the reg test tasks.  This is just done to check
  the parameter passing mechanism is working correctly. */
@@ -286,7 +287,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 	int systemStateUpdateValue;
 	while(1)
 	{
-		if (xQueueReceive(xSystemInfoQueue, &(receivedMessage), 0) == pdPASS)
+		if (xQueueReceive(xSignalInfoQueue, &(receivedMessage), 0) == pdPASS)
 		{	
 			//Get the absolute roc Value
 			if(receivedMessage.currentRoC < 0){
@@ -313,6 +314,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 				//Implement logic to being watching
 
 			}
+		}
 			
 	}
 }
