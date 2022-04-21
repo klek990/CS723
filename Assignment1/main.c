@@ -56,6 +56,7 @@ static void manageSystemStateTask(void *pvParameters);
 
 /* Global frequency variables to be passed in queues */
 float freqNext = 0, freqPrev = 0, freqRoC = 0, period = 0;
+int samplesPrev = 0, samplesNext = 0, avgSamples = 0;
 
 // For system state management
 int prevStateBeforeMaintenance = 1;
@@ -64,12 +65,13 @@ bool maintenanceActivated = false;
 // MUST BE PROTECTED
 int currentSystemState = 1;
 
+
 /* Read signal from onboard FAU and do calculations */
-void readFrequencyISR()
+void readFrequencyISR(void *context)
 {
-	int samplesPrev = 0, samplesNext = 0, avgSamples = 0;
 	samplesPrev = samplesNext;
-	samplesNext = IORD_ALTERA_AVALON_PIO_DATA(FREQUENCY_ANALYSER_BASE);
+	samplesNext = IORD(FREQUENCY_ANALYSER_BASE, 0);
+
 
 	avgSamples = (samplesNext + samplesPrev) / 2;
 
@@ -80,9 +82,9 @@ void readFrequencyISR()
 
 	freqRoC = ((freqNext - freqPrev) * SAMPLINGFREQUENCY) / avgSamples;
 
-	printf("Freq Next: %0.2f\n", freqNext);
-	printf("Freq Prev: %0.2f\n", freqPrev);
-	printf("Freq RoC: %0.2f\n", freqRoC);
+//	printf("Freq Next: %0.2f\n", freqNext);
+//	printf("Freq Prev: %0.2f\n", freqPrev);
+//	printf("Freq RoC: %0.2f\n", freqRoC);
 
 	return;
 }
