@@ -1,4 +1,5 @@
 /* Standard includes. */
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -51,14 +52,14 @@ TimerHandle_t xtimer500MS;
 /* Structures for received signal (freq, RoC, period) and which loads to shed */
 struct signalInfoStruct
 {
-	float currentRoC;
+	float currentRoc;
 	float currentFreq;
 	float currentPeriod;
 } signalInfo;
 
 struct loadInfoStruct
 {
-	int loadValue;
+	int wallSwitchLoad;
 	bool isStable;
 } loadInfo;
 
@@ -67,7 +68,7 @@ static void pollWallSwitchesTask(void *pvParameters);
 static void manageSystemStateTask(void *pvParameters);
 
 /* Global frequency variables to be passed in queues */
-float freqNext = 0, freqPrev = 0, freqRoC = 0, period = 0;
+float freqNext = 0, freqPrev = 0, freqRoc = 0, period = 0;
 int samplesPrev = 0, samplesNext = 0, avgSamples = 0;
 
 // For system state management
@@ -78,7 +79,7 @@ bool maintenanceActivated = false;
 int currentSystemState = 1;
 
 // Thresholds
-float rocThreshold = 50;
+float rocThreshold = 7;
 float freqThreshold = 50;
 
 // Callbacks
@@ -104,11 +105,16 @@ void readFrequencyISR(void *context)
 
 	period = freqNext / (float)2;
 
-	freqRoC = ((freqNext - freqPrev) * SAMPLINGFREQUENCY) / avgSamples;
+	/* RoC should be irrespective of  */
+	freqRoc = ((freqNext - freqPrev) * SAMPLINGFREQUENCY) / avgSamples;
+	if (freqRoc < 0)
+	{
+		freqRoc *= (float)-1;
+	}
 
-	//	printf("Freq Next: %0.2f\n", freqNext);
-	//	printf("Freq Prev: %0.2f\n", freqPrev);
-	//	printf("Freq RoC: %0.2f\n", freqRoC);
+	// printf("Freq Next: %0.2f\n", freqNext);
+	// printf("Freq Prev: %0.2f\n", freqPrev);
+	// printf("Freq RoC: %0.2f\n", freqRoc);
 
 	return;
 }
@@ -168,7 +174,7 @@ static void processSignalTask(void *pvParameters)
 	while (1)
 	{
 		signalInfo.currentFreq = freqNext;
-		signalInfo.currentRoC = freqRoC;
+		signalInfo.currentRoc = freqRoc;
 		signalInfo.currentPeriod = period;
 
 		if (xQueueSend(xSignalInfoQueue, &signalInfo, NULL) == pdPASS)
@@ -196,11 +202,14 @@ static void pollWallSwitchesTask(void *pvParameters)
 	while (1)
 	{
 		/* Read which wall switch is triggered */
-		wallSwitchToQueue = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111111;
+		wallSwitchToQueue = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111;
 
 		if (xQueueSend(xLoadControlQueue, &wallSwitchToQueue, NULL) == pdPASS)
 		{
-			printf("Maintennace mode. Wall switch value sent to queue: %d \n", wallSwitchToQueue);
+			if (maintenanceActivated)
+			{
+				printf("Maintennace mode. Wall switch value sent to queue: %d \n", wallSwitchToQueue);
+			}
 		}
 
 		vTaskDelay(1000);
@@ -275,13 +284,13 @@ static void checkSystemStabilityTask(void *pvParameters)
 		if (xQueueReceive(xSignalInfoQueue, &(receivedMessage), 0) == pdPASS)
 		{
 			// Get the absolute roc Value
-			if (receivedMessage.currentRoC < 0)
+			if (receivedMessage.currentRoc < 0)
 			{
-				receivedMessage.currentRoC = receivedMessage.currentRoC * -1;
+				receivedMessage.currentRoc = receivedMessage.currentRoc * -1;
 			}
 
 			// Check if ROC is greater than ROC threshold, or if Frequency is below FREQ threshold
-			if (receivedMessage.currentFreq < freqThreshold || receivedMessage.currentRoC > rocThreshold)
+			if (receivedMessage.currentFreq < freqThreshold || receivedMessage.currentRoc > rocThreshold)
 			{
 				// System is UNSTABLE
 
@@ -303,31 +312,91 @@ static void checkSystemStabilityTask(void *pvParameters)
 		vTaskDelay(1000);
 	}
 }
+int loadsToChange = 0;
+int countDownBit = 3;
+int sumOfLoads = 0;
+
+/* Keeps track of rollover  */
+int shedLoad = 0;
 
 /* Switch loads on/off based on information in loadControlQueue (pollWallSwitches & checkSystemStability) */
 static void loadControlTask(void *pvParameters)
 {
+
 	int wallSwitchTriggered = 0;
+	float receivedRoc = 0;
+	struct signalInfoStruct receivedSignalInfo;
+	struct loadInfoStruct receivedLoadInfo;
+
+	/* Testing if load managing correct */
+	currentSystemState = 1;
 
 	while (1)
 	{
-		if (xQueueReceive(xSignalInfoQueue, &(loadInfo), 0) == pdPASS)
+		if (xQueueReceive(xSignalInfoQueue, &(receivedSignalInfo), 0) == pdPASS)
 		{
-			// if (!loadInfo.isStable)
-			// {
-			// printf("Load unstable\n");
-			if (xQueueReceive(xLoadControlQueue, &wallSwitchTriggered, NULL) == pdPASS)
+			wallSwitchTriggered = receivedLoadInfo.wallSwitchLoad;
+			if (xQueueReceive(xLoadControlQueue, &(receivedLoadInfo), NULL) == pdPASS)
 			{
-				loadInfo.loadValue = wallSwitchTriggered;
-
-				if (maintenanceActivated)
+				receivedRoc = receivedSignalInfo.currentRoc;
+				if (!loadInfo.isStable)
 				{
-					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, loadInfo.loadValue);
-					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~loadInfo.loadValue & 0b11111111);
-					printf("System unstable. loadInfo wall switch value: %d\n", loadInfo.loadValue);
+
+					printf("UNSTABLE: %f\n", receivedRoc);
+					if (maintenanceActivated)
+					{
+						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchTriggered);
+						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~wallSwitchTriggered & 0b11111);
+					}
+
+					/* If RoC threshold is exceeded and is in load managing state, start shedding loads one by one until
+					 *  stability criteria satisfied. */
+					else if (currentSystemState == 1 && receivedRoc > rocThreshold && sumOfLoads < 31)
+					{
+						sumOfLoads += pow(2, loadsToChange);
+						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
+						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
+						printf("RoC out of bounds: %f. Load shed: %d\n\n", receivedRoc, sumOfLoads);
+						loadsToChange++;
+
+						/* FOR TESTING PURPOSES */
+						// if (sumOfLoads == 31)
+						// {
+						// 	loadInfo.isStable = 1;
+						// }
+					}
+				}
+
+				/* If system is stable, start turning loads back on from highest priority */
+				else if (loadInfo.isStable)
+				{
+					/* receiveROC for testing only */
+					receivedRoc = receivedSignalInfo.currentRoc;
+					printf("STABLE: %f\n", receivedRoc);
+
+					if (maintenanceActivated)
+					{
+						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchTriggered);
+						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~wallSwitchTriggered & 0b11111);
+						// printf("System unstable. loadInfo wall switch value: %d\n", receivedLoadInfo.wallSwitchLoad);
+					}
+					else if (currentSystemState == 1 && loadsToChange >= 0)
+					{
+						printf("Load power: %d", loadsToChange);
+						sumOfLoads -= pow(2, loadsToChange - 1);
+						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
+						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
+						printf("System stable at: %f. Turning on Load: %d\n\n", receivedRoc, sumOfLoads);
+						loadsToChange--;
+
+						/* FOR TESTING PURPOSES */
+						// if (sumOfLoads == 0)
+						// {
+						// 	loadInfo.isStable = 0;
+						// }
+					}
 				}
 			}
-			// }
 		}
 		vTaskDelay(1000);
 	}
