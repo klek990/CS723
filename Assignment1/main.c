@@ -43,12 +43,22 @@ static QueueHandle_t xSignalInfoQueue;
 static QueueHandle_t xSystemStateQueue;
 static QueueHandle_t xLoadControlQueue;
 
+TimerHandle_t xtimer200MS;
+TimerHandle_t xtimer500MS;
+
 struct signalInfoStruct
 {
 	float currentRoC;
 	float currentFreq;
 	float currentPeriod;
 } signalInfo;
+
+struct loadInfoStruct
+{
+	int loadValue;
+	bool isStable;
+} loadInfo;
+
 
 static void processSignalTask(void *pvParameters);
 static void pollWallSwitchesTask(void *pvParameters);
@@ -65,6 +75,9 @@ bool maintenanceActivated = false;
 // MUST BE PROTECTED
 int currentSystemState = 1;
 
+//Thresholds
+float rocThreshold = 50;
+float freqThreshold = 50;
 
 /* Read signal from onboard FAU and do calculations */
 void readFrequencyISR(void *context)
@@ -254,6 +267,43 @@ static void manageSystemStateTask(void *pvParameters)
 	}
 }
 
+static void checkSystemStabilityTask(void *pvParameters)
+{
+	struct signalInfoStruct receivedMessage;
+	int systemStateUpdateValue;
+	while(1)
+	{
+		if (xQueueReceive(xSystemInfoQueue, &(receivedMessage), 0) == pdPASS)
+		{	
+			//Get the absolute roc Value
+			if(receivedMessage.currentRoC < 0){
+				receivedMessage.currentRoC = receivedMessage.currentRoC * -1;
+			}
+
+			//Check if ROC is greater than ROC threshold, or if Frequency is below FREQ threshold
+			if(receivedMessage.currentFreq < freqThreshold || receivedMessage.currentRoC > rocThreshold){
+				//System is UNSTABLE
+
+				//Signify that the load management state is needed
+				systemStateUpdateValue = loadState;
+				if (xQueueSend(xSystemStateQueue, &systemStateUpdateValue, NULL) == pdPASS)
+				{
+					printf("\nLoad Managing State sucessfully sent to SystemStateQueue\n");
+				}
+
+				//Signify that the lowest priority load must be shed
+
+
+				//start the 500 ms timer
+				//delayThisTask by 200ms to ensure load shedding
+
+				//Implement logic to being watching
+
+			}
+			
+	}
+}
+
 int initCreateTasks(void)
 {
 	xTaskCreate(processSignalTask, "processSignal", configMINIMAL_STACK_SIZE,
@@ -264,6 +314,9 @@ int initCreateTasks(void)
 
 	xTaskCreate(manageSystemStateTask, "manageSystemStateTask", configMINIMAL_STACK_SIZE,
 				mainREG_TEST_3_PARAMETER, mainREG_TEST_PRIORITY + 3, NULL);
+
+	xTaskCreate(checkSystemStabilityTask, "checkSystemStabilityTask", configMINIMAL_STACK_SIZE,
+				mainREG_TEST_3_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
 
 	return 0;
 }
@@ -324,6 +377,16 @@ int main(void)
 	{
 		xSemaphoreGive(xSystemStateSemaphore);
 		printf("\n System State Semaphore successfully created");
+	}
+
+	xtimer200MS = xTimerCreate("timer200MS", 200/portTICK_PERIOD_MS, pdFALSE, ( void * ) 0, xTimer200MSCallback);
+	if(xtimer200MS == NULL){
+		printf("200 MS Timer not successfully created");
+	}
+
+	xtimer500MS = xTimerCreate("timer500MS", 500/portTICK_PERIOD_MS, pdFALSE, ( void * ) 1, xTimer500MSCallback);
+	if(xtimer500MS == NULL){
+		printf("500 MS Timer not successfully created");
 	}
 
 	/* Finally start the scheduler. */
