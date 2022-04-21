@@ -153,6 +153,8 @@ static void readKeyboardISR(void *context, alt_u32 id)
 	return;
 }
 
+
+
 static void maintenanceStateISR(void *context)
 {
 	int passToQueue = maintenanceState;
@@ -300,7 +302,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 
 				//Signify that the load management state is needed
 				systemStateUpdateValue = loadState;
-				if (xQueueSend(xSignalStateQueue, &systemStateUpdateValue, NULL) == pdPASS)
+				if (xQueueSend(xSystemStateQueue, &systemStateUpdateValue, NULL) == pdPASS)
 				{
 					printf("\nLoad Managing State sucessfully sent to SystemStateQueue\n");
 				}
@@ -315,7 +317,6 @@ static void checkSystemStabilityTask(void *pvParameters)
 
 			}
 		}
-			
 	}
 }
 
