@@ -79,6 +79,19 @@ int currentSystemState = 1;
 float rocThreshold = 50;
 float freqThreshold = 50;
 
+
+//Callbacks
+
+void xTimer200MSCallback( TimerHandle_t xTimer )
+ {
+
+ }
+
+void xTimer500MSCallback( TimerHandle_t xTimer )
+ {
+
+ }
+
 /* Read signal from onboard FAU and do calculations */
 void readFrequencyISR(void *context)
 {
