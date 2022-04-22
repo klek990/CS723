@@ -538,7 +538,7 @@ int main(void)
 	initCreateTasks();
 
 	xSystemStateQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
-	xLoadControlQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
+	xLoadControlQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct loadInfoStruct));
 	xSignalInfoQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct signalInfoStruct));
 	if (xSystemStateQueue == NULL)
 	{
