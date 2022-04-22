@@ -76,7 +76,7 @@ int currentSystemState = 0;
 
 // Thresholds
 float rocThreshold = 7;
-float freqThreshold = 50;
+float freqThreshold = 48;
 
 /* loadControlTask globals */
 int loadsToChange = 0;
@@ -117,33 +117,33 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 
 void xTimer500MSCallback(TimerHandle_t xTimer)
 {
-	bool isStable = false;
-	//Test Statement
-	printf("TIMER 500 MS EXPIRED\n");
-	if(!currIsStable)
+	if (currentSystemState == loadState)
 	{
-		//Tell the loadControlQueue to decrement load
-		isStable = false;
-		if (xQueueSend(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
+		bool isStable = false;
+		//Test Statement
+		printf("TIMER 500 MS EXPIRED\n");
+		if(!currIsStable)
 		{
-			printf("UNSTABLE loadcontrol queue FROM TIMER\n");
+			//Tell the loadControlQueue to decrement load
+			isStable = false;
+			if (xQueueSend(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
+			{
+				printf("UNSTABLE loadcontrol queue FROM TIMER\n");
 
+			}
 		}
-	}
-	else 
-	{
-		//Tell the loadControlQueue to increment load if the system is stable
-		isStable = true;
-		if (xQueueSend(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
+		else 
 		{
-			printf("STABLE loadcontrol queue FROM TIMER\n");
+			//Tell the loadControlQueue to increment load if the system is stable
+			isStable = true;
+			if (xQueueSend(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
+			{
+				printf("STABLE loadcontrol queue FROM TIMER\n");
 
+			}
 		}
+		xTimer500Expired = true;
 	}
-	xTimer500Expired = true;
-
-	//Check the Stability state on expiry
-	//If it is stable 
 }
 
 /* Read signal from onboard FAU and do calculations */
@@ -339,12 +339,14 @@ static void checkSystemStabilityTask(void *pvParameters)
 	struct signalInfoStruct receivedMessage;
 	bool isStable = false;
 	int systemStateUpdateValue;
+	int pxRxedMessage;
 	while (1)
 	{
 		if (xQueueReceive(xSignalInfoQueue, &(receivedMessage), 50/portTICK_PERIOD_MS) == pdPASS)
 		{
 			prevIsStable = currIsStable;
 			currIsStable = !(receivedMessage.currentFreq < freqThreshold || receivedMessage.currentRoc > rocThreshold);
+			// printf("currIsStable: %d", currIsStable);
 			if(currentSystemState == normalState){
 				//Instability is frist detected
 
@@ -389,8 +391,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 
 			}
 		}
-		vTaskDelay(500);
-		//while(uxQueueMessagesWaiting(xSignalInfoQueue) == 0){;}
+		vTaskDelay(100);
 	}
 }
 
@@ -398,9 +399,8 @@ static void checkSystemStabilityTask(void *pvParameters)
 static void loadControlTask(void *pvParameters)
 {
 	int localSystemState = 0;
-	int wallSwitchTriggered = 0, turnOffLEDS = 0;
+	int wallSwitchTriggered = 0;
 	bool isStable = false;
-	int currentLEDS = 0;
 	
 	while (1)
 	{
@@ -408,16 +408,6 @@ static void loadControlTask(void *pvParameters)
 		/* If in load managing, check systemStability */
 		if (currentSystemState == loadState) 
 		{
-			// currentLEDS = IORD(RED_LEDS_BASE, 0);
-			// turnOffLEDS = IORD(SLIDE_SWITCH_BASE,0) & currentLEDS;
-
-			// /* Only allow LED's to be turned off */
-			// if (currentLEDS == ~turnOffLEDS)
-			// {
-			// 	IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, turnOffLEDS);
-			// 	IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~turnOffLEDS);
-			// }
-
 			if (xQueueReceive(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
 			{
 				/* If not stable, begin to shed loads */
@@ -451,7 +441,6 @@ static void loadControlTask(void *pvParameters)
 
 					if (loadsToChange >= 0)
 					{
-						printf("Load power: %d", loadsToChange);
 						sumOfLoads -= pow(2, loadsToChange-1);
 						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
 						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
@@ -465,7 +454,6 @@ static void loadControlTask(void *pvParameters)
 							if (xQueueSend(xSystemStateQueue, &(localSystemState), 50/portTICK_PERIOD_MS) == pdPASS)
 							{
 								printf("Normal mode\n");
-								xTimerStop(xtimer500MS, 0);
 							}
 						}
 					}
