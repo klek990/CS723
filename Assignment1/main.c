@@ -82,14 +82,73 @@ int currentSystemState = 1;
 float rocThreshold = 7;
 float freqThreshold = 50;
 
+//Load control
+int loadsToChange = 0;
+int countDownBit = 3;
+int sumOfLoads = 0;
+
+/* Keeps track of rollover  */
+int shedLoad = 0;
+
+/* flag to show first load servived */
+bool snoopingAllowed = false;
+
+//Systemstability (do not refer to)
+bool currIsStable = true;
+bool prevIsStable = true;
+bool xTimer500Expired = false;
+
 // Callbacks
 
 void xTimer200MSCallback(TimerHandle_t xTimer)
 {
+	//Test Statement
+	printf("TIMER 200 MS EXPIRED");
+
+	if(!snoopingAllowed){
+		//ADD Code that sheds the lowest priority load if it hasnt already been serviced
+
+
+
+
+		//Say that the firstLoadShed has occurred
+		snoopingAllowed = true;
+
+		//Start the snooping timer
+		xTimerStart(xtimer500MS, 0);
+	}
+	xTimerStop(xtimer200MS, 0);
 }
 
 void xTimer500MSCallback(TimerHandle_t xTimer)
 {
+	//Test Statement
+	printf("TIMER 500 MS EXPIRED");
+
+	if(currIsStable){
+		//Tell the loadControlQueue to decrement load
+		loadInfo.isStable = false;
+		loadInfo.wallSwitchLoad = 0;
+		if (xQueueSend(xLoadControlQueue, &loadInfo, NULL) == pdPASS)
+		{
+			printf("\nINSTABLE loadcontrol queue FROM TIMER\n");
+
+		}
+	}
+	else {
+		//Tell the loadControlQueue to decrement load
+		loadInfo.isStable = true;
+		loadInfo.wallSwitchLoad = 0;
+		if (xQueueSend(xLoadControlQueue, &loadInfo, NULL) == pdPASS)
+		{
+			printf("\nSTABLE loadcontrol queue FROM TIMER\n");
+
+		}
+	}
+	xTimer500Expired = true;
+
+	//Check the Stability state on expiry
+	//If it is stable 
 }
 
 /* Read signal from onboard FAU and do calculations */
@@ -208,7 +267,7 @@ static void pollWallSwitchesTask(void *pvParameters)
 		{
 			if (maintenanceActivated)
 			{
-				printf("Maintennace mode. Wall switch value sent to queue: %d \n", wallSwitchToQueue);
+				printf("Maintenance mode. Wall switch value sent to queue: %d \n", wallSwitchToQueue);
 			}
 		}
 
@@ -224,7 +283,7 @@ static void manageSystemStateTask(void *pvParameters)
 		if (xSystemStateQueue != NULL)
 		{
 			// Consume the value stored in the SystemStateQueue
-			if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 50/portTICK_PERIOD_MS) == pdPASS)
+			if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS)
 			{
 				xSemaphoreTake(xSystemStateSemaphore, portMAX_DELAY);
 				// Critical Section
@@ -268,7 +327,7 @@ static void manageSystemStateTask(void *pvParameters)
 			}
 			else
 			{
-
+				while(uxQueueMessagesWaiting(xSystemStateQueue) == 0){;}
 			}
 		}
 	}
@@ -287,36 +346,59 @@ static void checkSystemStabilityTask(void *pvParameters)
 			{
 				receivedMessage.currentRoc = receivedMessage.currentRoc * -1;
 			}
+			prevIsStable = currIsStable;
+			currIsStable = !(receivedMessage.currentFreq < freqThreshold || receivedMessage.currentRoc > rocThreshold);
+			if(!snoopingAllowed){
+				//Instability is frist detected
 
-			// Check if ROC is greater than ROC threshold, or if Frequency is below FREQ threshold
-			if (receivedMessage.currentFreq < freqThreshold || receivedMessage.currentRoc > rocThreshold)
-			{
-				// System is UNSTABLE
-
-				// Signify that the load management state is needed
-				systemStateUpdateValue = loadState;
-				if (xQueueSend(xSystemStateQueue, &systemStateUpdateValue, NULL) == pdPASS)
+				// Check if ROC is greater than ROC threshold, or if Frequency is below FREQ threshold
+				if (!currIsStable)
 				{
-					printf("\nLoad Managing State sucessfully sent to SystemStateQueue\n");
+					// System is UNSTABLE
+
+					// Signify that the load management state is needed
+					systemStateUpdateValue = loadState;
+					if (xQueueSend(xSystemStateQueue, &systemStateUpdateValue, NULL) == pdPASS)
+					{
+						printf("\nLoad Managing State sucessfully sent to SystemStateQueue\n");
+					}
+					
+					//send that the system is not stable
+					loadInfo.isStable = false;
+					loadInfo.wallSwitchLoad = 0;
+					if (xQueueSend(xLoadControlQueue, &loadInfo, NULL) == pdPASS)
+					{
+						printf("\nStability Information added to loadcontrol queue\n");
+						
+						//Start the 200ms timer to show that first loadshedding must happen
+						xTimerStart(xtimer200MS, 0);
+					}
+				}
+				else {
+					//if it is stable and not in the watching state then do nothing
+				}
+			}
+			else {
+				//Now in Snooping state because first load serviced
+
+				//If timer 500 hasnt expired AND the system status changes, restart the timer
+				if((prevIsStable != currIsStable) && !xTimer500Expired){
+					//Restart the timer
+					xTimerReset(xtimer500MS, 0);
 				}
 
-				// Signify that the lowest priority load must be shed
+				//If it has expired, reset the flag;
+				if(xTimer500Expired){
+					xTimer500Expired = false;
+				}
 
-				// start the 500 ms timer
-				// delayThisTask by 200ms to ensure load shedding
+				// Otherwise let the timer expire and it will check if the system has been stable or not
 
-				// Implement logic to being watching
 			}
 		}
-		vTaskDelay(1000);
+		while(uxQueueMessagesWaiting(xSignalInfoQueue) == 0){;}
 	}
 }
-int loadsToChange = 0;
-int countDownBit = 3;
-int sumOfLoads = 0;
-
-/* Keeps track of rollover  */
-int shedLoad = 0;
 
 /* Switch loads on/off based on information in loadControlQueue (pollWallSwitches & checkSystemStability) */
 static void loadControlTask(void *pvParameters)
@@ -459,7 +541,7 @@ int main(void)
 	initCreateTasks();
 
 	xSystemStateQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
-	xLoadControlQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
+	xLoadControlQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct loadInfoStruct));
 	xSignalInfoQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct signalInfoStruct));
 	if (xSystemStateQueue == NULL)
 	{
@@ -488,7 +570,7 @@ int main(void)
 		printf("200 MS Timer not successfully created");
 	}
 
-	xtimer500MS = xTimerCreate("timer500MS", 500 / portTICK_PERIOD_MS, pdFALSE, (void *)1, xTimer500MSCallback);
+	xtimer500MS = xTimerCreate("timer500MS", 500 / portTICK_PERIOD_MS, pdTRUE, (void *)1, xTimer500MSCallback);
 	if (xtimer500MS == NULL)
 	{
 		printf("500 MS Timer not successfully created");
