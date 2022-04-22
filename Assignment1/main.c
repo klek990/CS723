@@ -94,14 +94,12 @@ bool currIsStable = true;
 bool prevIsStable = true;
 bool xTimer500Expired = false;
 
-bool firstLoadShed = false;
-
 // Callbacks
 
 void xTimer200MSCallback(TimerHandle_t xTimer)
 {
 	//Test Statement
-	printf("TIMER 200 MS EXPIRED");
+	printf("TIMER 200 MS EXPIRED\n");
 
 	if(!snoopingAllowed){
 		//ADD Code that sheds the lowest priority load if it hasnt already been serviced
@@ -121,15 +119,14 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 
 void xTimer500MSCallback(TimerHandle_t xTimer)
 {
-	struct loadInfoStruct receivedLoadInfo = loadInfo;
 	//Test Statement
-	printf("TIMER 500 MS EXPIRED");
+	printf("TIMER 500 MS EXPIRED\n");
 
 	if(!currIsStable){
 		//Tell the loadControlQueue to decrement load
-		receivedLoadInfo.isStable = false;
-		receivedLoadInfo.wallSwitchLoad = 0;
-		if (xQueueSend(xLoadControlQueue, &receivedLoadInfo, 50/portTICK_PERIOD_MS) == pdPASS)
+		loadInfo.isStable = false;
+		loadInfo.wallSwitchLoad = 0;
+		if (xQueueSend(xLoadControlQueue, &loadInfo, 50/portTICK_PERIOD_MS) == pdPASS)
 		{
 			printf("\nINSTABLE loadcontrol queue FROM TIMER\n");
 
@@ -137,9 +134,9 @@ void xTimer500MSCallback(TimerHandle_t xTimer)
 	}
 	else {
 		//Tell the loadControlQueue to increment load
-		receivedLoadInfo.isStable = true;
-		receivedLoadInfo.wallSwitchLoad = 0;
-		if (xQueueSend(xLoadControlQueue, &receivedLoadInfo, 50/portTICK_PERIOD_MS) == pdPASS)
+		loadInfo.isStable = true;
+		loadInfo.wallSwitchLoad = 0;
+		if (xQueueSend(xLoadControlQueue, &loadInfo, 50/portTICK_PERIOD_MS) == pdPASS)
 		{
 			printf("\nSTABLE loadcontrol queue FROM TIMER\n");
 
@@ -335,7 +332,7 @@ static void manageSystemStateTask(void *pvParameters)
 static void checkSystemStabilityTask(void *pvParameters)
 {
 	struct signalInfoStruct receivedMessage;
-	struct loadInfoStruct sendLoadInfo = loadInfo;
+	// struct loadInfoStruct sendLoadInfo = loadInfo;
 	int systemStateUpdateValue;
 	while (1)
 	{	
@@ -357,18 +354,17 @@ static void checkSystemStabilityTask(void *pvParameters)
 					if (xQueueSend(xSystemStateQueue, &systemStateUpdateValue, NULL) == pdPASS)
 					{
 						printf("\nLoad Managing State sucessfully sent to SystemStateQueue\n");
-					}
-					
-					//send that the system is not stable
-					sendLoadInfo.isStable = false;
-					sendLoadInfo.wallSwitchLoad = 0;
-					if (xQueueSend(xLoadControlQueue, &sendLoadInfo, NULL) == pdPASS)
-					{
-						printf("\nStability Information added to loadcontrol queue\n");	
-					}
+						//send that the system is not stable
+						loadInfo.isStable = false;
+						loadInfo.wallSwitchLoad = 0;
 
-					//Start the 200ms timer to show that first loadshedding must happen
-					xTimerStart(xtimer200MS, 0);
+						if (xQueueSend(xLoadControlQueue, &loadInfo, NULL) == pdPASS)
+						{
+							printf("\nStability Information added to loadcontrol queue\n");	
+							//Start the 200ms timer to show that first loadshedding must happen
+							xTimerStart(xtimer200MS, 0);
+						}
+					}
 				}
 			}
 			else {
@@ -396,79 +392,88 @@ static void checkSystemStabilityTask(void *pvParameters)
 /* Switch loads on/off based on information in loadControlQueue (pollWallSwitches & checkSystemStability) */
 static void loadControlTask(void *pvParameters)
 {
+	int localSystemState;
 	int wallSwitchTriggered = 0;
-	struct loadInfoStruct receivedLoadInfo = loadInfo;
+	// struct loadInfoStruct receivedLoadInfo = loadInfo;
 	
 	while (1)
 	{
-		wallSwitchTriggered = receivedLoadInfo.wallSwitchLoad;
-		if (xQueueReceive(xLoadControlQueue, &(receivedLoadInfo), 50/portTICK_PERIOD_MS) == pdPASS)
+		if (currentSystemState == 1) 
 		{
-			if (!receivedLoadInfo.isStable)
+			wallSwitchTriggered = loadInfo.wallSwitchLoad;
+			if (xQueueReceive(xLoadControlQueue, &(loadInfo), 50/portTICK_PERIOD_MS) == pdPASS)
 			{
-				printf("LoadInfoStability: %d\n", loadInfo.isStable);
-				printf("Received stability: %d\n", receivedLoadInfo.isStable);
-				printf("UNSTABLE: %f\n", freqRoc);
-				if (currentSystemState == 2)
+				if (!loadInfo.isStable)
 				{
-					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchTriggered);
-					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~wallSwitchTriggered & 0b11111);
-				}
-
-				/* If RoC threshold is exceeded and is in load managing state, start shedding loads one by one until
-				*  stability criteria satisfied. */
-				else if (sumOfLoads < 31)
-				{
-					sumOfLoads += pow(2, loadsToChange);
-					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
-					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
-					printf("RoC out of bounds. Load shed: %d\n\n", sumOfLoads);
-					loadsToChange++;
-
-					snoopingAllowed = true;
-					if (sumOfLoads == 31)
+					printf("LoadInfoStability: %d\n", loadInfo.isStable);
+					// printf("Received stability: %d\n", receivedLoadInfo.isStable);
+					printf("UNSTABLE: %f\n", freqRoc);
+					if (currentSystemState == maintenanceState)
 					{
-						printf("Normal mode\n");
-						snoopingAllowed = false;
-						currentSystemState = 0;
+						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchTriggered);
+						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~wallSwitchTriggered & 0b11111);
 					}
-					xTimerStart(xtimer500MS, 0);
 
-					/* FOR TESTING PURPOSES */
-					// if (sumOfLoads == 31)
-					// {
-					// 	loadInfo.isStable = 1;
-					// }
+					/* If RoC threshold is exceeded and is in load managing state, start shedding loads one by one until
+					*  stability criteria satisfied. */
+					else if (sumOfLoads < 31)
+					{
+						sumOfLoads += pow(2, loadsToChange);
+						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
+						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
+						printf("RoC out of bounds. Load shed: %d\n\n", sumOfLoads);
+						loadsToChange++;
+
+						snoopingAllowed = true;
+						
+						xTimerStart(xtimer500MS, 0);
+
+						/* FOR TESTING PURPOSES */
+						// if (sumOfLoads == 31)
+						// {
+						// 	loadInfo.isStable = 1;
+						// }
+					}
 				}
-			}
 
-			/* If system is stable, start turning loads back on from highest priority */
-			else if (receivedLoadInfo.isStable)
-			{
-				printf("STABLE: %f\n", freqRoc);
-
-				if (currentSystemState == 2)
+				/* If system is stable, start turning loads back on from highest priority */
+				else if (loadInfo.isStable)
 				{
-					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchTriggered);
-					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~wallSwitchTriggered & 0b11111);
-					// printf("System unstable. loadInfo wall switch value: %d\n", receivedLoadInfo.wallSwitchLoad);
-				}
-				else if (loadsToChange >= 0)
-				{
-					printf("Load power: %d", loadsToChange);
-					sumOfLoads -= pow(2, loadsToChange - 1);
-					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
-					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
-					printf("System stable. Turning on Load: %d\n\n", sumOfLoads);
-					loadsToChange--;
+					printf("STABLE: %f\n", freqRoc);
 
-					snoopingAllowed = false;
+					if (currentSystemState == maintenanceState)
+					{
+						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchTriggered);
+						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~wallSwitchTriggered & 0b11111);
+						// printf("System unstable. loadInfo wall switch value: %d\n", receivedLoadInfo.wallSwitchLoad);
+					}
+					else if (loadsToChange >= 0)
+					{
+						printf("Load power: %d", loadsToChange);
+						sumOfLoads -= pow(2, loadsToChange - 1);
+						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
+						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
+						printf("System stable. Turning on Load: %d\n\n", sumOfLoads);
+						loadsToChange--;
 
-					/* FOR TESTING PURPOSES */
-					// if (sumOfLoads == 0)
-					// {
-					// 	loadInfo.isStable = 0;
-					// }
+						if (sumOfLoads == 0)
+						{
+							snoopingAllowed = false;
+							localSystemState = normalState;
+							if (xQueueSend(xSystemStateQueue, &(localSystemState), 50/portTICK_PERIOD_MS) == pdPASS)
+							{
+								printf("Normal mode\n");
+							}
+						}
+
+						snoopingAllowed = false;
+
+						/* FOR TESTING PURPOSES */
+						// if (sumOfLoads == 0)
+						// {
+						// 	loadInfo.isStable = 0;
+						// }
+					}
 				}
 			}
 		}
