@@ -389,7 +389,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 
 			}
 		}
-		vTaskDelay(1000);
+		vTaskDelay(500);
 		//while(uxQueueMessagesWaiting(xSignalInfoQueue) == 0){;}
 	}
 }
