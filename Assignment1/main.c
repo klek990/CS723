@@ -86,13 +86,13 @@ float freqThreshold = 50;
 int loadsToChange = 0;
 int sumOfLoads = 0;
 
-/* flag to show first load servived */
-bool snoopingAllowed = false;
 
 //Systemstability (do not refer to)
 bool currIsStable = true;
 bool prevIsStable = true;
 bool xTimer500Expired = false;
+
+bool snoopingAllowed = false; 
 
 // Callbacks
 
@@ -109,11 +109,10 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 		printf("RoC out of bounds. Load shed: %d\n\n", sumOfLoads);
 		loadsToChange++;
 
-		snoopingAllowed = true;
-
 		//Start the snooping timer
 		xTimerStart(xtimer500MS, 0);
 	}
+	snoopingAllowed = false;
 	xTimerStop(xtimer200MS, 0);
 }
 
@@ -341,7 +340,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 		{
 			prevIsStable = currIsStable;
 			currIsStable = !(receivedMessage.currentFreq < freqThreshold || receivedMessage.currentRoc > rocThreshold);
-			if(!snoopingAllowed){
+			if(currentSystemState == normalState){
 				//Instability is frist detected
 
 				// Check if ROC is greater than ROC threshold, or if Frequency is below FREQ threshold
@@ -425,9 +424,11 @@ static void loadControlTask(void *pvParameters)
 						printf("RoC out of bounds. Load shed: %d\n\n", sumOfLoads);
 						loadsToChange++;
 
-						snoopingAllowed = true;
-						
-						xTimerStart(xtimer500MS, 0);
+
+						if(!snoopingAllowed){
+							xTimerStart(xtimer500MS, 0);
+							snoopingAllowed = true;
+						}
 
 						/* FOR TESTING PURPOSES */
 						// if (sumOfLoads == 31)
@@ -459,7 +460,6 @@ static void loadControlTask(void *pvParameters)
 
 						if (sumOfLoads == 0)
 						{
-							snoopingAllowed = false;
 							localSystemState = normalState;
 							if (xQueueSend(xSystemStateQueue, &(localSystemState), 50/portTICK_PERIOD_MS) == pdPASS)
 							{
@@ -467,7 +467,6 @@ static void loadControlTask(void *pvParameters)
 							}
 						}
 
-						snoopingAllowed = false;
 
 						/* FOR TESTING PURPOSES */
 						// if (sumOfLoads == 0)
