@@ -125,7 +125,7 @@ void xTimer500MSCallback(TimerHandle_t xTimer)
 	//Test Statement
 	printf("TIMER 500 MS EXPIRED");
 
-	if(currIsStable){
+	if(!currIsStable){
 		//Tell the loadControlQueue to decrement load
 		loadInfo.isStable = false;
 		loadInfo.wallSwitchLoad = 0;
@@ -136,7 +136,7 @@ void xTimer500MSCallback(TimerHandle_t xTimer)
 		}
 	}
 	else {
-		//Tell the loadControlQueue to decrement load
+		//Tell the loadControlQueue to increment load
 		loadInfo.isStable = true;
 		loadInfo.wallSwitchLoad = 0;
 		if (xQueueSend(xLoadControlQueue, &loadInfo, NULL) == pdPASS)
