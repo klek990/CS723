@@ -367,7 +367,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 					}
 				}
 			}
-			else {
+			else if(currentSystemState == loadState){
 				//Now in Snooping state because first load serviced
 			
 				//If timer 500 hasnt expired AND the system status changes, restart the timer
@@ -385,7 +385,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 
 			}
 		}
-		vTaskDelay(1000);
+		while(uxQueueMessagesWaiting(xSignalInfoQueue) == 0){;}
 	}
 }
 
