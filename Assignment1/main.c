@@ -262,10 +262,10 @@ static void pollWallSwitchesTask(void *pvParameters)
 	{
 		/* Read which wall switch is triggered */
 		wallSwitchToQueue = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111;
-
-		if (xQueueSend(xLoadControlQueue, &wallSwitchToQueue, NULL) == pdPASS)
+		if (maintenanceActivated)
 		{
-			if (maintenanceActivated)
+		
+			if (xQueueSend(xLoadControlQueue, &wallSwitchToQueue, NULL) == pdPASS)
 			{
 				printf("Maintennace mode. Wall switch value sent to queue: %d \n", wallSwitchToQueue);
 			}
