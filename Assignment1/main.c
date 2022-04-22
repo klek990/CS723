@@ -398,8 +398,9 @@ static void checkSystemStabilityTask(void *pvParameters)
 static void loadControlTask(void *pvParameters)
 {
 	int localSystemState = 0;
-	int wallSwitchTriggered = 0;
+	int wallSwitchTriggered = 0, turnOffLEDS = 0;
 	bool isStable = false;
+	int currentLEDS = 0;
 	
 	while (1)
 	{
@@ -407,6 +408,16 @@ static void loadControlTask(void *pvParameters)
 		/* If in load managing, check systemStability */
 		if (currentSystemState == loadState) 
 		{
+			// currentLEDS = IORD(RED_LEDS_BASE, 0);
+			// turnOffLEDS = IORD(SLIDE_SWITCH_BASE,0) & currentLEDS;
+
+			// /* Only allow LED's to be turned off */
+			// if (currentLEDS == ~turnOffLEDS)
+			// {
+			// 	IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, turnOffLEDS);
+			// 	IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~turnOffLEDS);
+			// }
+
 			if (xQueueReceive(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
 			{
 				/* If not stable, begin to shed loads */
