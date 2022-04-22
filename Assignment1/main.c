@@ -119,14 +119,15 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 
 void xTimer500MSCallback(TimerHandle_t xTimer)
 {
+	struct loadInfoStruct receivedLoadInfo;
 	//Test Statement
 	printf("TIMER 500 MS EXPIRED\n");
 
 	if(!currIsStable){
 		//Tell the loadControlQueue to decrement load
-		loadInfo.isStable = false;
-		loadInfo.wallSwitchLoad = 0;
-		if (xQueueSend(xLoadControlQueue, &loadInfo, 50/portTICK_PERIOD_MS) == pdPASS)
+		receivedLoadInfo.isStable = false;
+		receivedLoadInfo.wallSwitchLoad = 0;
+		if (xQueueSend(xLoadControlQueue, &receivedLoadInfo, 50/portTICK_PERIOD_MS) == pdPASS)
 		{
 			printf("\nINSTABLE loadcontrol queue FROM TIMER\n");
 
@@ -134,9 +135,9 @@ void xTimer500MSCallback(TimerHandle_t xTimer)
 	}
 	else {
 		//Tell the loadControlQueue to increment load
-		loadInfo.isStable = true;
-		loadInfo.wallSwitchLoad = 0;
-		if (xQueueSend(xLoadControlQueue, &loadInfo, 50/portTICK_PERIOD_MS) == pdPASS)
+		receivedLoadInfo.isStable = true;
+		receivedLoadInfo.wallSwitchLoad = 0;
+		if (xQueueSend(xLoadControlQueue, &receivedLoadInfo, 50/portTICK_PERIOD_MS) == pdPASS)
 		{
 			printf("\nSTABLE loadcontrol queue FROM TIMER\n");
 
@@ -332,7 +333,7 @@ static void manageSystemStateTask(void *pvParameters)
 static void checkSystemStabilityTask(void *pvParameters)
 {
 	struct signalInfoStruct receivedMessage;
-	// struct loadInfoStruct sendLoadInfo = loadInfo;
+	struct loadInfoStruct sendLoadInfo;
 	int systemStateUpdateValue;
 	while (1)
 	{	
@@ -355,10 +356,10 @@ static void checkSystemStabilityTask(void *pvParameters)
 					{
 						printf("\nLoad Managing State sucessfully sent to SystemStateQueue\n");
 						//send that the system is not stable
-						loadInfo.isStable = false;
-						loadInfo.wallSwitchLoad = 0;
+						sendLoadInfo.isStable = false;
+						sendLoadInfo.wallSwitchLoad = 0;
 
-						if (xQueueSend(xLoadControlQueue, &loadInfo, NULL) == pdPASS)
+						if (xQueueSend(xLoadControlQueue, &sendLoadInfo, NULL) == pdPASS)
 						{
 							printf("\nStability Information added to loadcontrol queue\n");	
 							//Start the 200ms timer to show that first loadshedding must happen
@@ -394,18 +395,18 @@ static void loadControlTask(void *pvParameters)
 {
 	int localSystemState;
 	int wallSwitchTriggered = 0;
-	// struct loadInfoStruct receivedLoadInfo = loadInfo;
+	struct loadInfoStruct receivedLoadInfo;
 	
 	while (1)
 	{
 		if (currentSystemState == 1) 
 		{
-			wallSwitchTriggered = loadInfo.wallSwitchLoad;
-			if (xQueueReceive(xLoadControlQueue, &(loadInfo), 50/portTICK_PERIOD_MS) == pdPASS)
+			wallSwitchTriggered = receivedLoadInfo.wallSwitchLoad;
+			if (xQueueReceive(xLoadControlQueue, &(receivedLoadInfo), 50/portTICK_PERIOD_MS) == pdPASS)
 			{
-				if (!loadInfo.isStable)
+				if (!receivedLoadInfo.isStable)
 				{
-					printf("LoadInfoStability: %d\n", loadInfo.isStable);
+					printf("LoadInfoStability: %d\n", receivedLoadInfo.isStable);
 					// printf("Received stability: %d\n", receivedLoadInfo.isStable);
 					printf("UNSTABLE: %f\n", freqRoc);
 					if (currentSystemState == maintenanceState)
@@ -437,7 +438,7 @@ static void loadControlTask(void *pvParameters)
 				}
 
 				/* If system is stable, start turning loads back on from highest priority */
-				else if (loadInfo.isStable)
+				else if (receivedLoadInfo.isStable)
 				{
 					printf("STABLE: %f\n", freqRoc);
 
