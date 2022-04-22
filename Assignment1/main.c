@@ -23,7 +23,8 @@
 #define mainREG_TEST_1_PARAMETER ((void *)0x12345678)
 #define mainREG_TEST_2_PARAMETER ((void *)0x87654321)
 #define mainREG_TEST_3_PARAMETER ((void *)0x12348765)
-#define mainREG_TEST_4_PARAMETER ((void *)0x87654321)
+#define mainREG_TEST_4_PARAMETER ((void *)0x78654321)
+#define mainREG_TEST_5_PARAMETER ((void *)0x76854321)
 #define mainREG_TEST_PRIORITY (tskIDLE_PRIORITY + 1)
 #define SAMPLINGFREQUENCY 16e3
 
@@ -44,7 +45,8 @@ SemaphoreHandle_t upperThreshold;
 // Define Queues
 static QueueHandle_t xSignalInfoQueue;
 static QueueHandle_t xSystemStateQueue;
-static QueueHandle_t xLoadControlQueue;
+static QueueHandle_t xWallSwitchQueue;
+static QueueHandle_t xSystemStabilityQueue;
 
 TimerHandle_t xtimer200MS;
 TimerHandle_t xtimer500MS;
@@ -56,12 +58,6 @@ struct signalInfoStruct
 	float currentFreq;
 	float currentPeriod;
 } signalInfo;
-
-struct loadInfoStruct
-{
-	int wallSwitchLoad;
-	bool isStable;
-} loadInfo;
 
 static void processSignalTask(void *pvParameters);
 static void pollWallSwitchesTask(void *pvParameters);
@@ -76,7 +72,7 @@ int prevStateBeforeMaintenance = 1;
 bool maintenanceActivated = false;
 
 // MUST BE PROTECTED
-int currentSystemState = 1;
+int currentSystemState = 0;
 
 // Thresholds
 float rocThreshold = 7;
@@ -92,7 +88,7 @@ bool currIsStable = true;
 bool prevIsStable = true;
 bool xTimer500Expired = false;
 
-bool snoopingAllowed = false; 
+bool firstLoadShed = false; 
 
 // Callbacks
 
@@ -101,44 +97,46 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 	//Test Statement
 	printf("TIMER 200 MS EXPIRED\n");
 
-	if(!snoopingAllowed){
-		//ADD Code that sheds the lowest priority load if it hasnt already been serviced
+	/* If first load is not shed within 200ms, shed load manually */
+	if(!firstLoadShed)
+	{
 		sumOfLoads += pow(2, loadsToChange);
 		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
 		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
 		printf("RoC out of bounds. Load shed: %d\n\n", sumOfLoads);
 		loadsToChange++;
 
-		//Start the snooping timer
+		/* After first load is shed, start the 500ms timer */
 		xTimerStart(xtimer500MS, 0);
+
+		firstLoadShed = true;
 	}
-	snoopingAllowed = false;
+	firstLoadShed = false;
 	xTimerStop(xtimer200MS, 0);
 }
 
 void xTimer500MSCallback(TimerHandle_t xTimer)
 {
-	struct loadInfoStruct receivedLoadInfo;
+	bool isStable = false;
 	//Test Statement
 	printf("TIMER 500 MS EXPIRED\n");
-
-	if(!currIsStable){
+	if(!currIsStable)
+	{
 		//Tell the loadControlQueue to decrement load
-		receivedLoadInfo.isStable = false;
-		receivedLoadInfo.wallSwitchLoad = 0;
-		if (xQueueSend(xLoadControlQueue, &receivedLoadInfo, 50/portTICK_PERIOD_MS) == pdPASS)
+		isStable = false;
+		if (xQueueSend(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
 		{
-			printf("\nINSTABLE loadcontrol queue FROM TIMER\n");
+			printf("UNSTABLE loadcontrol queue FROM TIMER\n");
 
 		}
 	}
-	else {
-		//Tell the loadControlQueue to increment load
-		receivedLoadInfo.isStable = true;
-		receivedLoadInfo.wallSwitchLoad = 0;
-		if (xQueueSend(xLoadControlQueue, &receivedLoadInfo, 50/portTICK_PERIOD_MS) == pdPASS)
+	else 
+	{
+		//Tell the loadControlQueue to increment load if the system is stable
+		isStable = true;
+		if (xQueueSend(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
 		{
-			printf("\nSTABLE loadcontrol queue FROM TIMER\n");
+			printf("STABLE loadcontrol queue FROM TIMER\n");
 
 		}
 	}
@@ -228,15 +226,16 @@ static void maintenanceStateISR(void *context)
 /* This should be used to send the signal information to the other tasks */
 static void processSignalTask(void *pvParameters)
 {
+	struct signalInfoStruct sendSignalInfo;
 	while (1)
 	{
 		if (freqRoc != INFINITY)
 		{
-			signalInfo.currentFreq = freqNext;
-			signalInfo.currentRoc = freqRoc;
-			signalInfo.currentPeriod = period;
+			sendSignalInfo.currentFreq = freqNext;
+			sendSignalInfo.currentRoc = freqRoc;
+			sendSignalInfo.currentPeriod = period;
 
-			if (xQueueSend(xSignalInfoQueue, &signalInfo, 50/portTICK_PERIOD_MS) == pdPASS)
+			if (xQueueSend(xSignalInfoQueue, &sendSignalInfo, 50/portTICK_PERIOD_MS) == pdPASS)
 			{
 				// printf("signalInfoStruct sent to queue\n");
 			}
@@ -256,18 +255,17 @@ static void processSignalTask(void *pvParameters)
  * 		Green LED = on */
 static void pollWallSwitchesTask(void *pvParameters)
 {
-	int wallSwitchToQueue = 0;
+	int sendWallSwitchValue = 0;
 
 	while (1)
 	{
 		/* Read which wall switch is triggered */
-		wallSwitchToQueue = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111;
-		if (maintenanceActivated)
+		sendWallSwitchValue = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111;
+		if (xQueueSend(xWallSwitchQueue, &sendWallSwitchValue, NULL) == pdPASS)
 		{
-		
-			if (xQueueSend(xLoadControlQueue, &wallSwitchToQueue, NULL) == pdPASS)
+			if (currentSystemState == maintenanceState)
 			{
-				printf("Maintennace mode. Wall switch value sent to queue: %d \n", wallSwitchToQueue);
+				printf("Maintenance mode. Wall switch value sent to queue: %d \n", sendWallSwitchValue);
 			}
 		}
 
@@ -277,54 +275,61 @@ static void pollWallSwitchesTask(void *pvParameters)
 
 static void manageSystemStateTask(void *pvParameters)
 {
-	int latestStateValue;
+	printf("in here\n");
+	int latestStateValue, wallSwitchValue;
 	while (1)
 	{
-		if (xSystemStateQueue != NULL)
+		// Consume the value stored in the SystemStateQueue
+		if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 50/portTICK_PERIOD_MS) == pdPASS)
 		{
-			// Consume the value stored in the SystemStateQueue
-			if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 50/portTICK_PERIOD_MS) == pdPASS)
+			xSemaphoreTake(xSystemStateSemaphore, 0);
+			// Critical Section
+
+			// If maintenance not activated, normal operation
+			if (!maintenanceActivated)
 			{
-				xSemaphoreTake(xSystemStateSemaphore, portMAX_DELAY);
-				// Critical Section
-
-				// If maintenance not activated, normal operation
-				if (!maintenanceActivated)
+				// check to see if maintenance state is the latestvalue
+				if (latestStateValue == maintenanceState)
 				{
-					// check to see if maintenance state is the latestvalue
-					if (latestStateValue == maintenanceState)
-					{
-						// Save the current state before maintenance
-						prevStateBeforeMaintenance = currentSystemState;
+					// Save the current state before maintenance
+					prevStateBeforeMaintenance = currentSystemState;
 
-						// Update the current state to the maintanenace state
-						currentSystemState = maintenanceState;
+					// Update the current state to the maintanenace state
+					currentSystemState = maintenanceState;
 
-						// Activate the maintenance flag
-						maintenanceActivated = true;
-					}
-					else
-					{
-						// Normal Operation
-						currentSystemState = latestStateValue;
-					}
+					// Activate the maintenance flag
+					maintenanceActivated = true;
 				}
 				else
 				{
-					// Ignore all other values unless it is button, then restore last non maintenance state
-					// Maintenance State stops load management, there
-					if (latestStateValue == maintenanceState)
-					{
-
-						// Restore the system to what it was before
-						currentSystemState = prevStateBeforeMaintenance;
-						maintenanceActivated = false;
-					}
+					printf("in this section\n");
+					// Normal Operation
+					currentSystemState = latestStateValue;
 				}
-
-				xSemaphoreGive(xSystemStateSemaphore);
-				printf("\nQueue Value Consumed: %d, System State Is Now: %d\n", latestStateValue, currentSystemState);
 			}
+			else
+			{
+				// Ignore all other values unless it is button, then restore last non maintenance state
+				// Maintenance State stops load management, there
+				if (latestStateValue == maintenanceState)
+				{
+					printf("in this if\n");
+					// Restore the system to what it was before
+					currentSystemState = prevStateBeforeMaintenance;
+					maintenanceActivated = false;
+					wallSwitchValue = IORD(RED_LEDS_BASE, 0);
+
+					printf("Overwriting sumOfLoads with %d", wallSwitchValue);
+
+
+					printf("loads to shed: %d\n", __builtin_popcount(wallSwitchValue));
+					loadsToChange = __builtin_popcount(wallSwitchValue);
+					sumOfLoads = wallSwitchValue;
+				}
+			}
+
+			xSemaphoreGive(xSystemStateSemaphore);
+			printf("\nQueue Value Consumed: %d, System State Is Now: %d\n", latestStateValue, currentSystemState);
 		}
 	}
 }
@@ -332,10 +337,10 @@ static void manageSystemStateTask(void *pvParameters)
 static void checkSystemStabilityTask(void *pvParameters)
 {
 	struct signalInfoStruct receivedMessage;
-	struct loadInfoStruct sendLoadInfo;
+	bool isStable = false;
 	int systemStateUpdateValue;
 	while (1)
-	{	
+	{
 		if (xQueueReceive(xSignalInfoQueue, &(receivedMessage), 50/portTICK_PERIOD_MS) == pdPASS)
 		{
 			prevIsStable = currIsStable;
@@ -353,26 +358,25 @@ static void checkSystemStabilityTask(void *pvParameters)
 					systemStateUpdateValue = loadState;
 					if (xQueueSend(xSystemStateQueue, &systemStateUpdateValue, NULL) == pdPASS)
 					{
-						printf("\nLoad Managing State sucessfully sent to SystemStateQueue\n");
-						//send that the system is not stable
-						sendLoadInfo.isStable = false;
-						sendLoadInfo.wallSwitchLoad = 0;
 
-						if (xQueueSend(xLoadControlQueue, &sendLoadInfo, NULL) == pdPASS)
+						printf("\nLoad Managing State sucessfully sent to SystemStateQueue %d\n", systemStateUpdateValue);
+						//send that the system is not stable
+						isStable = false;
+
+						if (xQueueSend(xSystemStabilityQueue, &isStable, NULL) == pdPASS)
 						{
-							printf("\nStability Information added to loadcontrol queue\n");	
+							printf("\nStability Information added to loadcontrol queue: %d\n", isStable);	
 							//Start the 200ms timer to show that first loadshedding must happen
 							xTimerStart(xtimer200MS, 0);
 						}
 					}
 				}
 			}
-			else if(currentSystemState == loadState){
-				//Now in Snooping state because first load serviced
-			
+			else if(currentSystemState == loadState)
+			{
 				//If timer 500 hasnt expired AND the system status changes, restart the timer
-				if((prevIsStable != currIsStable) && !xTimer500Expired){
-					//Restart the timer
+				if((prevIsStable != currIsStable) && !xTimer500Expired)
+				{
 					xTimerReset(xtimer500MS, 0);
 				}
 
@@ -385,38 +389,34 @@ static void checkSystemStabilityTask(void *pvParameters)
 
 			}
 		}
-		while(uxQueueMessagesWaiting(xSignalInfoQueue) == 0){;}
+		vTaskDelay(1000);
+		//while(uxQueueMessagesWaiting(xSignalInfoQueue) == 0){;}
 	}
 }
 
 /* Switch loads on/off based on information in loadControlQueue (pollWallSwitches & checkSystemStability) */
 static void loadControlTask(void *pvParameters)
 {
-	int localSystemState;
+	int localSystemState = 0;
 	int wallSwitchTriggered = 0;
-	struct loadInfoStruct receivedLoadInfo;
+	bool isStable = false;
 	
 	while (1)
 	{
-		if (currentSystemState == 1) 
+		// printf("CurrentSystemState: %d\n", currentSystemState);
+		/* If in load managing, check systemStability */
+		if (currentSystemState == loadState) 
 		{
-			wallSwitchTriggered = receivedLoadInfo.wallSwitchLoad;
-			if (xQueueReceive(xLoadControlQueue, &(receivedLoadInfo), 50/portTICK_PERIOD_MS) == pdPASS)
+			if (xQueueReceive(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
 			{
-				if (!receivedLoadInfo.isStable)
+				/* If not stable, begin to shed loads */
+				if (!isStable)
 				{
-					printf("LoadInfoStability: %d\n", receivedLoadInfo.isStable);
-					// printf("Received stability: %d\n", receivedLoadInfo.isStable);
+					printf("LoadInfoStability: %d\n", isStable);
 					printf("UNSTABLE: %f\n", freqRoc);
-					if (currentSystemState == maintenanceState)
-					{
-						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchTriggered);
-						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~wallSwitchTriggered & 0b11111);
-					}
 
-					/* If RoC threshold is exceeded and is in load managing state, start shedding loads one by one until
-					*  stability criteria satisfied. */
-					else if (sumOfLoads < 31)
+					/* If all the loads are not shed, keep shedding loads from lowest to highest significance */
+					if (sumOfLoads < 31)
 					{
 						sumOfLoads += pow(2, loadsToChange);
 						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
@@ -424,35 +424,24 @@ static void loadControlTask(void *pvParameters)
 						printf("RoC out of bounds. Load shed: %d\n\n", sumOfLoads);
 						loadsToChange++;
 
-
-						if(!snoopingAllowed){
+						/* Start 500ms timer when first load is shed, set flag to true. */
+						if(!firstLoadShed)
+						{
 							xTimerStart(xtimer500MS, 0);
-							snoopingAllowed = true;
+							firstLoadShed = true;
 						}
-
-						/* FOR TESTING PURPOSES */
-						// if (sumOfLoads == 31)
-						// {
-						// 	loadInfo.isStable = 1;
-						// }
 					}
 				}
 
 				/* If system is stable, start turning loads back on from highest priority */
-				else if (receivedLoadInfo.isStable)
+				else if (isStable)
 				{
 					printf("STABLE: %f\n", freqRoc);
 
-					if (currentSystemState == maintenanceState)
-					{
-						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchTriggered);
-						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~wallSwitchTriggered & 0b11111);
-						// printf("System unstable. loadInfo wall switch value: %d\n", receivedLoadInfo.wallSwitchLoad);
-					}
-					else if (loadsToChange >= 0)
+					if (loadsToChange >= 0)
 					{
 						printf("Load power: %d", loadsToChange);
-						sumOfLoads -= pow(2, loadsToChange - 1);
+						sumOfLoads -= pow(2, loadsToChange-1);
 						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
 						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
 						printf("System stable. Turning on Load: %d\n\n", sumOfLoads);
@@ -460,21 +449,26 @@ static void loadControlTask(void *pvParameters)
 
 						if (sumOfLoads == 0)
 						{
+							/* Set system state to normal (0) and stop the 500ms timer */
 							localSystemState = normalState;
 							if (xQueueSend(xSystemStateQueue, &(localSystemState), 50/portTICK_PERIOD_MS) == pdPASS)
 							{
 								printf("Normal mode\n");
+								xTimerStop(xtimer500MS, 0);
 							}
 						}
-
-
-						/* FOR TESTING PURPOSES */
-						// if (sumOfLoads == 0)
-						// {
-						// 	loadInfo.isStable = 0;
-						// }
 					}
 				}
+			}
+		}
+
+		/* Wall switch interaction when in maintenance state */
+		if (currentSystemState == maintenanceState)
+		{
+			if (xQueueReceive(xWallSwitchQueue, &wallSwitchTriggered, 50/portTICK_PERIOD_MS))
+			{
+				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchTriggered);
+				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~wallSwitchTriggered & 0b11111);
 			}
 		}
 	}
@@ -489,13 +483,13 @@ int initCreateTasks(void)
 				mainREG_TEST_2_PARAMETER, mainREG_TEST_PRIORITY, NULL);
 
 	xTaskCreate(manageSystemStateTask, "manageSystemStateTask", configMINIMAL_STACK_SIZE,
-				mainREG_TEST_3_PARAMETER, mainREG_TEST_PRIORITY + 3, NULL);
+				mainREG_TEST_3_PARAMETER, mainREG_TEST_PRIORITY + 6, NULL);
 
 	xTaskCreate(checkSystemStabilityTask, "checkSystemStabilityTask", configMINIMAL_STACK_SIZE,
-				mainREG_TEST_3_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
+				mainREG_TEST_4_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
 
 	xTaskCreate(loadControlTask, "loadControlTask", configMINIMAL_STACK_SIZE,
-				mainREG_TEST_4_PARAMETER, mainREG_TEST_PRIORITY + 4, NULL);
+				mainREG_TEST_5_PARAMETER, mainREG_TEST_PRIORITY + 4, NULL);
 
 	return 0;
 }
@@ -538,7 +532,8 @@ int main(void)
 	initCreateTasks();
 
 	xSystemStateQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
-	xLoadControlQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct loadInfoStruct));
+	xWallSwitchQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
+	xSystemStabilityQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
 	xSignalInfoQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct signalInfoStruct));
 	if (xSystemStateQueue == NULL)
 	{
