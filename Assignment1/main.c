@@ -224,7 +224,7 @@ static void manageSystemStateTask(void *pvParameters)
 		if (xSystemStateQueue != NULL)
 		{
 			// Consume the value stored in the SystemStateQueue
-			if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS)
+			if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 50/portTICK_PERIOD_MS) == pdPASS)
 			{
 				xSemaphoreTake(xSystemStateSemaphore, portMAX_DELAY);
 				// Critical Section
@@ -268,10 +268,9 @@ static void manageSystemStateTask(void *pvParameters)
 			}
 			else
 			{
-				printf("\nNo manageSystemState QUEUE RECEIVED UPDATE\n");
+
 			}
 		}
-		vTaskDelay(1000);
 	}
 }
 
@@ -280,7 +279,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 	struct signalInfoStruct receivedMessage;
 	int systemStateUpdateValue;
 	while (1)
-	{
+	{	
 		if (xQueueReceive(xSignalInfoQueue, &(receivedMessage), 0) == pdPASS)
 		{
 			// Get the absolute roc Value
