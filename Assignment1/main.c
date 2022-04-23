@@ -165,9 +165,9 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 		currentAssignedLoads = currentAssignedLoads&(currentAssignedLoads - 1);
 
 		//Write to LEDS
-		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, ~currentAssignedLoads & 0b11111);
-		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, currentAssignedLoads & 0b11111);
-
+		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
+		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
+		printf("Load shed by timer");
 
 		/* After first load is shed, start the 500ms timer */
 		xTimerStart(xtimer500MS, 0);
@@ -659,8 +659,8 @@ static void loadControlTask2(void *pvParameters)
 					currentAssignedLoads = currentAssignedLoads | (currentAssignedLoads + 1);
 
 					//Write to LEDS
-					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, ~currentAssignedLoads & 0b11111);
-					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, currentAssignedLoads & 0b11111);
+					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
+					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 				}
 				else {
 					//TURN OFF LSB 
@@ -668,8 +668,8 @@ static void loadControlTask2(void *pvParameters)
 					currentAssignedLoads = currentAssignedLoads&(currentAssignedLoads - 1);
 
 					//Write to LEDS
-					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, ~currentAssignedLoads & 0b11111);
-					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, currentAssignedLoads & 0b11111);
+					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
+					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 
 					//If the flag syaing it has been serviced hasnt been set, set it to true
 					if(!firstLoadShed){
@@ -695,7 +695,7 @@ static void loadControlTask2(void *pvParameters)
 			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS))
 			{
 				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, receivedSwitchValue & 0b11111);
-				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~receivedSwitchValue & 0b11111);
+				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~receivedSwitchValue & 0b00000);
 
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 					currentAssignedLoads = receivedSwitchValue;
