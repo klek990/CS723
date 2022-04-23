@@ -113,6 +113,7 @@ int sumOfLoads = 0;
 //Systemstability (do not refer to)
 bool currIsStable = true;
 bool prevIsStable = true;
+bool readStabiliyVGA = true;
 bool xTimer500Expired = false;
 
 bool firstLoadShed = false; 
@@ -170,6 +171,7 @@ void xTimer500MSCallback(TimerHandle_t xTimer)
 			}
 		}
 		xTimer500Expired = true;
+		readStabiliyVGA = isStable;
 	}
 }
 
@@ -264,14 +266,16 @@ static void processSignalTask(void *pvParameters)
 
 			if (xQueueSend(xSignalInfoQueue, &sendSignalInfo, 50/portTICK_PERIOD_MS) == pdPASS)
 			{
-				if (xQueueSend(xVGAFrequencyData, &sendSignalInfo.currentFreq, NULL) == pdPASS)
-				{
-					printf("%f\n", sendSignalInfo.currentFreq);
-				}
+				
 			}
 			else
 			{
 				// printf("Process signal task failed sending to queue\n");
+			}
+
+			if (xQueueSend(xVGAFrequencyData, &sendSignalInfo.currentFreq, NULL) == pdPASS)
+			{
+
 			}
 		}
 	}
@@ -433,6 +437,7 @@ static void loadControlTask(void *pvParameters)
 	int localSystemState = 0;
 	int wallSwitchTriggered = 0;
 	bool isStable = false;
+	float freq = 0;
 	
 	while (1)
 	{
@@ -542,24 +547,34 @@ void PRVGADraw_Task(void *pvParameters )
 	alt_up_char_buffer_string(char_buf, "-30", 9, 34);
 	alt_up_char_buffer_string(char_buf, "-60", 9, 36);
 
-	double freq[100], dfreq[100];
+	
+
+	float freq[100], dfreq[100];
 	int i = 99, j = 0;
 	Line line_freq, line_roc;
+
 
 	while(1){
 
 		//receive frequency data from queue
 		while(uxQueueMessagesWaiting( xVGAFrequencyData ) != 0){
 			xQueueReceive( xVGAFrequencyData, freq+i, 0 );
-			printf("%f\n", freq[i]);
 			
 			//calculate frequency RoC
 
 			if(i==0){
-				dfreq[0] = (freq[0]-freq[99]) * 2.0 * freq[0] * freq[99] / (freq[0]+freq[99]);	
+				dfreq[0] = (freq[0]-freq[99]) * 2.0 * freq[0] * freq[99] / (freq[0]+freq[99]);
+				if (dfreq[i] < 0)
+				{
+					dfreq[i] *= -1; 
+				}	
 			}
 			else{
 				dfreq[i] = (freq[i]-freq[i-1]) * 2.0 * freq[i]* freq[i-1] / (freq[i]+freq[i-1]);
+				if (dfreq[i] < 0)
+				{
+					dfreq[i] *= -1; 
+				}
 			}
 
 			if (dfreq[i] > 100.0){
@@ -596,6 +611,23 @@ void PRVGADraw_Task(void *pvParameters )
 				alt_up_pixel_buffer_dma_draw_line(pixel_buf, line_freq.x1, line_freq.y1, line_freq.x2, line_freq.y2, 0x3ff << 0, 0);
 				alt_up_pixel_buffer_dma_draw_line(pixel_buf, line_roc.x1, line_roc.y1, line_roc.x2, line_roc.y2, 0x3ff << 0, 0);
 			}
+
+			char load[20];
+			char systemStateBuffer[20];
+			char systemStabilityBuffer[20];
+
+			alt_up_char_buffer_string(char_buf, "Loads Shed: ", 6, 40);
+			alt_up_char_buffer_string(char_buf, itoa(loadsToChange, load, 10), 18, 40);
+
+			alt_up_char_buffer_string(char_buf, "System State: ", 6, 44);
+			alt_up_char_buffer_string(char_buf, itoa(currentSystemState, systemStateBuffer, 10), 20, 44);
+			alt_up_char_buffer_string(char_buf, "0 = Normal  1 = Load Management  2 = Maintenance", 6, 46);
+
+			alt_up_char_buffer_string(char_buf, "System Stability: ", 6, 50);
+			alt_up_char_buffer_string(char_buf, itoa(readStabiliyVGA, systemStabilityBuffer, 10), 24, 50);
+			alt_up_char_buffer_string(char_buf, "0 = Unstable  1 = Stable", 6, 52);
+			
+			
 		}
 		vTaskDelay(10);
 
@@ -604,7 +636,7 @@ void PRVGADraw_Task(void *pvParameters )
 
 int initCreateTasks(void)
 {
-	// xTaskCreate( PRVGADraw_Task, "DrawTsk", configMINIMAL_STACK_SIZE, NULL, PRVGADraw_Task_P, &PRVGADraw );
+	xTaskCreate( PRVGADraw_Task, "DrawTsk", configMINIMAL_STACK_SIZE, NULL, PRVGADraw_Task_P, &PRVGADraw );
 	
 	xTaskCreate(processSignalTask, "processSignal", configMINIMAL_STACK_SIZE,
 				mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
