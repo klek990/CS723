@@ -654,6 +654,8 @@ static void loadControlTask2(void *pvParameters)
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 				if(isStable){
 					//TURN ON MSB
+
+					printf("System stable. Turning on Load");
 					currentAssignedLoads = currentAssignedLoads | (currentAssignedLoads + 1);
 
 					//Write to LEDS
@@ -662,6 +664,7 @@ static void loadControlTask2(void *pvParameters)
 				}
 				else {
 					//TURN OFF LSB 
+					printf("System unStable. Turning off Load");
 					currentAssignedLoads = currentAssignedLoads&(currentAssignedLoads - 1);
 
 					//Write to LEDS
@@ -686,7 +689,6 @@ static void loadControlTask2(void *pvParameters)
 				//RELEASE THE SEMAPHORE
 				xSemaphoreGive(xCurrentOnLoadSemaphore);
 			} 
-			
 		}
 		else {
 			//Maintenance state
