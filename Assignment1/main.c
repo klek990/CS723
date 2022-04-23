@@ -689,10 +689,9 @@ static void loadControlTask2(void *pvParameters)
 		else if (currentSystemState == LOADSTATE){
 			if (xQueueReceive(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS){
 				//Take the semaphore
-				
+				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 				if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS) == pdPASS)
 				{
-					xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 					printf("\nAcknowledged Manual Switch Change in LOAD STATE\n");
 					//And because we are not allowed to turn any switches on, but we cann turn them off;
 
@@ -718,9 +717,7 @@ static void loadControlTask2(void *pvParameters)
 							IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 						}
 					}
-					xSemaphoreGive(xCurrentOnLoadSemaphore);
 				}
-				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 				if(isStable){
 					//TURN ON MSB
 					printf("System stable. Turning on Load");
