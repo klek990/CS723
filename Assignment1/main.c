@@ -654,7 +654,6 @@ static void loadControlTask2(void *pvParameters)
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 				if(isStable){
 					//TURN ON MSB
-					printf("System stable. Turning on Load");
 					
 					int leftMostBitPos = -1;
 					int compare = 0b10000;
@@ -667,6 +666,7 @@ static void loadControlTask2(void *pvParameters)
 					}
 					if(leftMostBitPos != -1){
 						currentAssignedLoads |= (1 << leftMostBitPos);
+						printf("System stable. Turning on Load");
 					}
 				}
 				else {
