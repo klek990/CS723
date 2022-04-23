@@ -305,7 +305,7 @@ static void processSignalTask(void *pvParameters)
 			{
 				if (xQueueSend(xVGAFrequencyData, &sendSignalInfo.currentFreq, NULL) == pdPASS)
 				{
-					printf("%f\n", sendSignalInfo.currentFreq);
+					// printf("%f\n", sendSignalInfo.currentFreq);
 				}
 			}
 			else
