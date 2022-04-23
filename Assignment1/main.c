@@ -168,11 +168,13 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, currentAssignedLoads & 0b11111);
 
-		//GIVE THE SEMAPHORE
-		xSemaphoreGive(xCurrentOnLoadSemaphore);
 
 		/* After first load is shed, start the 500ms timer */
 		xTimerStart(xtimer500MS, 0);
+		
+		//GIVE THE SEMAPHORE
+		xSemaphoreGive(xCurrentOnLoadSemaphore);
+
 	}
 	xTimerStop(xtimer200MS, 0);
 }
