@@ -665,13 +665,9 @@ static void loadControlTask2(void *pvParameters)
 					//FIGURE OUT WHERE MSB unset bit is:
 					int pos = 0;
 					int temp = currentAssignedLoads;
-					for (int i=0; temp>0; temp>>=1, i++){
-						if(currentAssignedLoads == 1){
-							pos = 1;
-							break;
-						}
-						if ((temp & 1) == 0){
-							pos = i;  
+					for (int i=0; i < 5; i++){
+						if ((temp & (1 << i)) == 0){
+							pos = i;
 						}
 					}
 					currentAssignedLoads |= (1 << pos);
@@ -707,12 +703,9 @@ static void loadControlTask2(void *pvParameters)
 			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS))
 			{
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
-
 				currentAssignedLoads = receivedSwitchValue;
 				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, 0b00000);
-
-			
 				xSemaphoreGive(xCurrentOnLoadSemaphore);
 			}
 		}
