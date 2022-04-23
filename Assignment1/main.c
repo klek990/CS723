@@ -653,7 +653,7 @@ static void loadControlTask2(void *pvParameters)
 				//Take the semaphore
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 
-				if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS))
+				if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS) == pdPASS)
 				{
 					printf("\nAcknowledged Manual Switch Change in LOAD STATE\n");
 					//And because we are not allowed to turn any switches on, but we cann turn them off;
