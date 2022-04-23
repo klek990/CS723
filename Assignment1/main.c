@@ -717,10 +717,11 @@ static void loadControlTask2(void *pvParameters)
 							currentAssignedLoads = (currentAssignedLoads & ~(1 << i));
 							printf("\nLOAD INDEX TURNED OFF IS AT: %d, LOAD OFF (i+1) is: %d\n", i, i+1);
 							printf("\nCurrentAssignedLoads is Now: %d\n", currentAssignedLoads);
+
+							IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
+							IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 						}
 					}
-					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
-					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 				}
 				if(isStable){
 					//TURN ON MSB
