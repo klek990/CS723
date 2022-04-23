@@ -654,22 +654,13 @@ static void loadControlTask2(void *pvParameters)
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 				if(isStable){
 					//TURN ON MSB
-
 					printf("System stable. Turning on Load");
 					currentAssignedLoads = currentAssignedLoads | (currentAssignedLoads + 1);
-
-					//Write to LEDS
-					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
-					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 				}
 				else {
 					//TURN OFF LSB 
 					printf("System unStable. Turning off Load");
 					currentAssignedLoads = currentAssignedLoads&(currentAssignedLoads - 1);
-
-					//Write to LEDS
-					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
-					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 
 					//If the flag syaing it has been serviced hasnt been set, set it to true
 					if(!firstLoadShed){
@@ -678,8 +669,11 @@ static void loadControlTask2(void *pvParameters)
 					}
 				}
 
-				//Check to see if stability reached
+				//write to leds
+				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
+				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 
+				//Check to see if stability reached
 				if(currentAssignedLoads == 0b11111){
 					if (xQueueSend(xSystemStateQueue, &(localSystemState), 50/portTICK_PERIOD_MS) == pdPASS)
 					{
