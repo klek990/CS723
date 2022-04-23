@@ -689,7 +689,7 @@ static void loadControlTask2(void *pvParameters)
 			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS))
 			{
 				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, receivedSwitchValue & 0b11111);
-				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~receivedSwitchValue & 0b00000);
+				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, 0b00000);
 
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 					currentAssignedLoads = receivedSwitchValue;
