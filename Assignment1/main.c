@@ -718,6 +718,7 @@ static void loadControlTask2(void *pvParameters)
 						}
 					}
 				}
+				/*
 				if(isStable){
 					//TURN ON MSB
 					printf("System stable. Turning on Load");
@@ -754,6 +755,7 @@ static void loadControlTask2(void *pvParameters)
 					}
 				}
 				//RELEASE THE SEMAPHORE
+				*/
 				xSemaphoreGive(xCurrentOnLoadSemaphore);
 			} 
 		}
