@@ -666,6 +666,10 @@ static void loadControlTask2(void *pvParameters)
 					int pos = 0;
 					int temp = currentAssignedLoads;
 					for (int i=0; temp>0; temp>>=1, i++){
+						if(currentAssignedLoads == 1){
+							pos = 1;
+							break;
+						}
 						if ((temp & 1) == 0){
 							pos = i;  
 						}
