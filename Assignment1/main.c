@@ -10,6 +10,8 @@
 #include "sys/alt_irq.h"
 #include "altera_up_avalon_ps2.h"
 #include "altera_up_ps2_keyboard.h"
+#include "altera_up_avalon_video_character_buffer_with_dma.h"
+#include "altera_up_avalon_video_pixel_buffer_dma.h"
 
 /* Scheduler includes. */
 #include "FreeRTOS/FreeRTOS.h"
@@ -25,14 +27,31 @@
 #define mainREG_TEST_3_PARAMETER ((void *)0x12348765)
 #define mainREG_TEST_4_PARAMETER ((void *)0x78654321)
 #define mainREG_TEST_5_PARAMETER ((void *)0x76854321)
+#define mainREG_TEST_6_PARAMETER ((void *)0x76854312)
 #define mainREG_TEST_PRIORITY (tskIDLE_PRIORITY + 1)
 #define SAMPLINGFREQUENCY 16e3
-
 #define SystemStateQueueSize 20
 
-#define normalState 0
-#define loadState 1
-#define maintenanceState 2
+/* STATES */
+#define NORMALSTATE 0
+#define LOADSTATE 1
+#define MAINTENANCESTATE 2
+
+/* Plot VGA stuff */
+#define FREQPLT_ORI_X 101		//x axis pixel position at the plot origin
+#define FREQPLT_GRID_SIZE_X 5	//pixel separation in the x axis between two data points
+#define FREQPLT_ORI_Y 199.0		//y axis pixel position at the plot origin
+#define FREQPLT_FREQ_RES 20.0	//number of pixels per Hz (y axis scale)
+
+#define ROCPLT_ORI_X 101
+#define ROCPLT_GRID_SIZE_X 5
+#define ROCPLT_ORI_Y 259.0
+#define ROCPLT_ROC_RES 0.5		//number of pixels per Hz/s (y axis scale)
+
+#define MIN_FREQ 45.0 //minimum frequency to draw
+#define PRVGADraw_Task_P     (tskIDLE_PRIORITY+1)
+TaskHandle_t PRVGADraw;
+
 
 /* Semaphores */
 /* 0 = Normal, 1 = Load managing, 2 = Maintenance */
@@ -47,6 +66,7 @@ static QueueHandle_t xSignalInfoQueue;
 static QueueHandle_t xSystemStateQueue;
 static QueueHandle_t xWallSwitchQueue;
 static QueueHandle_t xSystemStabilityQueue;
+static QueueHandle_t xVGAFrequencyData;
 
 TimerHandle_t xtimer200MS;
 TimerHandle_t xtimer500MS;
@@ -58,6 +78,13 @@ struct signalInfoStruct
 	float currentFreq;
 	float currentPeriod;
 } signalInfo;
+
+typedef struct{
+	unsigned int x1;
+	unsigned int y1;
+	unsigned int x2;
+	unsigned int y2;
+}Line;
 
 static void processSignalTask(void *pvParameters);
 static void pollWallSwitchesTask(void *pvParameters);
@@ -117,7 +144,7 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 
 void xTimer500MSCallback(TimerHandle_t xTimer)
 {
-	if (currentSystemState == loadState)
+	if (currentSystemState == LOADSTATE)
 	{
 		bool isStable = false;
 		//Test Statement
@@ -169,7 +196,7 @@ void readFrequencyISR(void *context)
 	// printf("Freq Next: %0.2f\n", freqNext);
 	// printf("Freq Prev: %0.2f\n", freqPrev);
 	// printf("Freq RoC: %0.2f\n", freqRoc);
-
+	
 	return;
 }
 
@@ -213,7 +240,7 @@ static void readKeyboardISR(void *context, alt_u32 id)
 
 static void maintenanceStateISR(void *context)
 {
-	int passToQueue = maintenanceState;
+	int passToQueue = MAINTENANCESTATE;
 	if (xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS)
 	{
 		printf("\nMaintenance State sucessfully sent to SystemStateQueue\n");
@@ -237,7 +264,10 @@ static void processSignalTask(void *pvParameters)
 
 			if (xQueueSend(xSignalInfoQueue, &sendSignalInfo, 50/portTICK_PERIOD_MS) == pdPASS)
 			{
-				// printf("signalInfoStruct sent to queue\n");
+				if (xQueueSend(xVGAFrequencyData, &sendSignalInfo.currentFreq, NULL) == pdPASS)
+				{
+					printf("%f\n", sendSignalInfo.currentFreq);
+				}
 			}
 			else
 			{
@@ -263,7 +293,7 @@ static void pollWallSwitchesTask(void *pvParameters)
 		sendWallSwitchValue = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111;
 		if (xQueueSend(xWallSwitchQueue, &sendWallSwitchValue, NULL) == pdPASS)
 		{
-			if (currentSystemState == maintenanceState)
+			if (currentSystemState == MAINTENANCESTATE)
 			{
 				printf("Maintenance mode. Wall switch value sent to queue: %d \n", sendWallSwitchValue);
 			}
@@ -289,13 +319,13 @@ static void manageSystemStateTask(void *pvParameters)
 			if (!maintenanceActivated)
 			{
 				// check to see if maintenance state is the latestvalue
-				if (latestStateValue == maintenanceState)
+				if (latestStateValue == MAINTENANCESTATE)
 				{
 					// Save the current state before maintenance
 					prevStateBeforeMaintenance = currentSystemState;
 
 					// Update the current state to the maintanenace state
-					currentSystemState = maintenanceState;
+					currentSystemState = MAINTENANCESTATE;
 
 					// Activate the maintenance flag
 					maintenanceActivated = true;
@@ -311,20 +341,22 @@ static void manageSystemStateTask(void *pvParameters)
 			{
 				// Ignore all other values unless it is button, then restore last non maintenance state
 				// Maintenance State stops load management, there
-				if (latestStateValue == maintenanceState)
+				if (latestStateValue == MAINTENANCESTATE)
 				{
 					printf("in this if\n");
 					// Restore the system to what it was before
 					currentSystemState = prevStateBeforeMaintenance;
 					maintenanceActivated = false;
-					wallSwitchValue = IORD(RED_LEDS_BASE, 0);
+					wallSwitchValue = IORD(SLIDE_SWITCH_BASE, 0);
 
 					printf("Overwriting sumOfLoads with %d", wallSwitchValue);
 
 
-					printf("loads to shed: %d\n", __builtin_popcount(wallSwitchValue));
+					
 					loadsToChange = __builtin_popcount(wallSwitchValue);
 					sumOfLoads = wallSwitchValue;
+					printf("Sum to shed: %d\n", wallSwitchValue);
+					printf("Pop count to shed: %d\n", loadsToChange);
 				}
 			}
 
@@ -347,7 +379,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 			prevIsStable = currIsStable;
 			currIsStable = !(receivedMessage.currentFreq < freqThreshold || receivedMessage.currentRoc > rocThreshold);
 			// printf("currIsStable: %d", currIsStable);
-			if(currentSystemState == normalState){
+			if(currentSystemState == NORMALSTATE){
 				//Instability is frist detected
 
 				// Check if ROC is greater than ROC threshold, or if Frequency is below FREQ threshold
@@ -357,7 +389,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 					// System is UNSTABLE
 
 					// Signify that the load management state is needed
-					systemStateUpdateValue = loadState;
+					systemStateUpdateValue = LOADSTATE;
 					if (xQueueSend(xSystemStateQueue, &systemStateUpdateValue, NULL) == pdPASS)
 					{
 
@@ -374,7 +406,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 					}
 				}
 			}
-			else if(currentSystemState == loadState)
+			else if(currentSystemState == LOADSTATE)
 			{
 				//If timer 500 hasnt expired AND the system status changes, restart the timer
 				if((prevIsStable != currIsStable) && !xTimer500Expired)
@@ -406,7 +438,7 @@ static void loadControlTask(void *pvParameters)
 	{
 		// printf("CurrentSystemState: %d\n", currentSystemState);
 		/* If in load managing, check systemStability */
-		if (currentSystemState == loadState) 
+		if (currentSystemState == LOADSTATE) 
 		{
 			if (xQueueReceive(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
 			{
@@ -450,7 +482,7 @@ static void loadControlTask(void *pvParameters)
 						if (sumOfLoads == 0)
 						{
 							/* Set system state to normal (0) and stop the 500ms timer */
-							localSystemState = normalState;
+							localSystemState = NORMALSTATE;
 							if (xQueueSend(xSystemStateQueue, &(localSystemState), 50/portTICK_PERIOD_MS) == pdPASS)
 							{
 								printf("Normal mode\n");
@@ -462,7 +494,7 @@ static void loadControlTask(void *pvParameters)
 		}
 
 		/* Wall switch interaction when in maintenance state */
-		if (currentSystemState == maintenanceState)
+		if (currentSystemState == MAINTENANCESTATE)
 		{
 			if (xQueueReceive(xWallSwitchQueue, &wallSwitchTriggered, 50/portTICK_PERIOD_MS))
 			{
@@ -473,8 +505,107 @@ static void loadControlTask(void *pvParameters)
 	}
 }
 
+/* VGA Display */
+void PRVGADraw_Task(void *pvParameters )
+{
+	//initialize VGA controllers
+	alt_up_pixel_buffer_dma_dev *pixel_buf;
+	pixel_buf = alt_up_pixel_buffer_dma_open_dev(VIDEO_PIXEL_BUFFER_DMA_NAME);
+	if(pixel_buf == NULL){
+		printf("can't find pixel buffer device\n");
+	}
+	alt_up_pixel_buffer_dma_clear_screen(pixel_buf, 0);
+
+	alt_up_char_buffer_dev *char_buf;
+	char_buf = alt_up_char_buffer_open_dev("/dev/video_character_buffer_with_dma");
+	if(char_buf == NULL){
+		printf("can't find char buffer device\n");
+	}
+	alt_up_char_buffer_clear(char_buf);
+
+	//Set up plot axes
+	alt_up_pixel_buffer_dma_draw_hline(pixel_buf, 100, 590, 200, ((0x3ff << 20) + (0x3ff << 10) + (0x3ff)), 0);
+	alt_up_pixel_buffer_dma_draw_hline(pixel_buf, 100, 590, 300, ((0x3ff << 20) + (0x3ff << 10) + (0x3ff)), 0);
+	alt_up_pixel_buffer_dma_draw_vline(pixel_buf, 100, 50, 200, ((0x3ff << 20) + (0x3ff << 10) + (0x3ff)), 0);
+	alt_up_pixel_buffer_dma_draw_vline(pixel_buf, 100, 220, 300, ((0x3ff << 20) + (0x3ff << 10) + (0x3ff)), 0);
+
+	alt_up_char_buffer_string(char_buf, "Frequency(Hz)", 4, 4);
+	alt_up_char_buffer_string(char_buf, "52", 10, 7);
+	alt_up_char_buffer_string(char_buf, "50", 10, 12);
+	alt_up_char_buffer_string(char_buf, "48", 10, 17);
+	alt_up_char_buffer_string(char_buf, "46", 10, 22);
+
+	alt_up_char_buffer_string(char_buf, "df/dt(Hz/s)", 4, 26);
+	alt_up_char_buffer_string(char_buf, "60", 10, 28);
+	alt_up_char_buffer_string(char_buf, "30", 10, 30);
+	alt_up_char_buffer_string(char_buf, "0", 10, 32);
+	alt_up_char_buffer_string(char_buf, "-30", 9, 34);
+	alt_up_char_buffer_string(char_buf, "-60", 9, 36);
+
+	double freq[100], dfreq[100];
+	int i = 99, j = 0;
+	Line line_freq, line_roc;
+
+	while(1){
+
+		//receive frequency data from queue
+		while(uxQueueMessagesWaiting( xVGAFrequencyData ) != 0){
+			xQueueReceive( xVGAFrequencyData, freq+i, 0 );
+			printf("%f\n", freq[i]);
+			
+			//calculate frequency RoC
+
+			if(i==0){
+				dfreq[0] = (freq[0]-freq[99]) * 2.0 * freq[0] * freq[99] / (freq[0]+freq[99]);	
+			}
+			else{
+				dfreq[i] = (freq[i]-freq[i-1]) * 2.0 * freq[i]* freq[i-1] / (freq[i]+freq[i-1]);
+			}
+
+			if (dfreq[i] > 100.0){
+				dfreq[i] = 100.0;
+			}
+
+
+			i =	++i%100; //point to the next data (oldest) to be overwritten
+
+		}
+
+		//clear old graph to draw new graph
+		alt_up_pixel_buffer_dma_draw_box(pixel_buf, 101, 0, 639, 199, 0, 0);
+		alt_up_pixel_buffer_dma_draw_box(pixel_buf, 101, 201, 639, 299, 0, 0);
+
+		for(j=0;j<99;++j){ //i here points to the oldest data, j loops through all the data to be drawn on VGA
+			if (((int)(freq[(i+j)%100]) > MIN_FREQ) && ((int)(freq[(i+j+1)%100]) > MIN_FREQ)){
+				//Calculate coordinates of the two data points to draw a line in between
+				//Frequency plot
+				line_freq.x1 = FREQPLT_ORI_X + FREQPLT_GRID_SIZE_X * j;
+				line_freq.y1 = (int)(FREQPLT_ORI_Y - FREQPLT_FREQ_RES * (freq[(i+j)%100] - MIN_FREQ));
+
+				line_freq.x2 = FREQPLT_ORI_X + FREQPLT_GRID_SIZE_X * (j + 1);
+				line_freq.y2 = (int)(FREQPLT_ORI_Y - FREQPLT_FREQ_RES * (freq[(i+j+1)%100] - MIN_FREQ));
+
+				//Frequency RoC plot
+				line_roc.x1 = ROCPLT_ORI_X + ROCPLT_GRID_SIZE_X * j;
+				line_roc.y1 = (int)(ROCPLT_ORI_Y - ROCPLT_ROC_RES * dfreq[(i+j)%100]);
+
+				line_roc.x2 = ROCPLT_ORI_X + ROCPLT_GRID_SIZE_X * (j + 1);
+				line_roc.y2 = (int)(ROCPLT_ORI_Y - ROCPLT_ROC_RES * dfreq[(i+j+1)%100]);
+
+				//Draw
+				alt_up_pixel_buffer_dma_draw_line(pixel_buf, line_freq.x1, line_freq.y1, line_freq.x2, line_freq.y2, 0x3ff << 0, 0);
+				alt_up_pixel_buffer_dma_draw_line(pixel_buf, line_roc.x1, line_roc.y1, line_roc.x2, line_roc.y2, 0x3ff << 0, 0);
+			}
+		}
+		vTaskDelay(10);
+
+	}
+}
+
 int initCreateTasks(void)
 {
+	// xTaskCreate( PRVGADraw_Task, "DrawTsk", configMINIMAL_STACK_SIZE, NULL, PRVGADraw_Task_P, &PRVGADraw );
+	
 	xTaskCreate(processSignalTask, "processSignal", configMINIMAL_STACK_SIZE,
 				mainREG_TEST_1_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
 
@@ -489,6 +620,10 @@ int initCreateTasks(void)
 
 	xTaskCreate(loadControlTask, "loadControlTask", configMINIMAL_STACK_SIZE,
 				mainREG_TEST_5_PARAMETER, mainREG_TEST_PRIORITY + 4, NULL);
+
+	
+
+	
 
 	return 0;
 }
@@ -527,6 +662,8 @@ int main(void)
 	/* Register Button ISR */
 	alt_irq_register(PUSH_BUTTON_IRQ, 0, maintenanceStateISR);
 
+	
+
 	/* The RegTest tasks as described at the top of this file. */
 	initCreateTasks();
 
@@ -534,6 +671,9 @@ int main(void)
 	xWallSwitchQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
 	xSystemStabilityQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
 	xSignalInfoQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct signalInfoStruct));
+	xVGAFrequencyData = xQueueCreate( 100, sizeof(float) );
+
+	
 	if (xSystemStateQueue == NULL)
 	{
 		printf("Unable to Create Integer SystemStateQueue\n");
