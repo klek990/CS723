@@ -342,7 +342,7 @@ static void pollWallSwitchesTask(void *pvParameters){
 				}
 			}
 		}
-		vTaskDelay(100);
+		vTaskDelay(100 / portTICK_PERIOD_MS);
 	}
 }
 
@@ -899,13 +899,13 @@ int main(void)
 		printf("xCurrentOnLoadSemaphore successfully created\n");
 	}
 
-	xtimer200MS = xTimerCreate("timer200MS", 200 / portTICK_PERIOD_MS, pdFALSE, (void *)0, xTimer200MSCallback);
+	xtimer200MS = xTimerCreate("timer200MS", (200 / portTICK_PERIOD_MS), pdFALSE, (void *)0, xTimer200MSCallback);
 	if (xtimer200MS == NULL)
 	{
 		printf("200 MS Timer not successfully created\n");
 	}
 
-	xtimer500MS = xTimerCreate("timer500MS", 500 / portTICK_PERIOD_MS, pdFALSE, (void *)1, xTimer500MSCallback);
+	xtimer500MS = xTimerCreate("timer500MS", (500 / portTICK_PERIOD_MS), pdFALSE, (void *)1, xTimer500MSCallback);
 	if (xtimer500MS == NULL)
 	{
 		printf("500 MS Timer not successfully created\n");
