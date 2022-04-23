@@ -713,8 +713,10 @@ static void loadControlTask2(void *pvParameters)
 						//If previous is not set and requested is set, IGNORE IT
 
 						if(requestedBitSet == false && previousBitSet == true){
+							printf("\nCurrentAssignedLoads Before Change is: %d\n", currentAssignedLoads);
 							currentAssignedLoads = (currentAssignedLoads & ~(1 << i));
 							printf("\nLOAD INDEX TURNED OFF IS AT: %d, LOAD OFF (i+1) is: %d\n", i, i+1);
+							printf("\nCurrentAssignedLoads is Now: %d\n", currentAssignedLoads);
 						}
 					}
 					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
