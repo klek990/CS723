@@ -171,7 +171,7 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 
 		/* After first load is shed, start the 500ms timer */
 		xTimerStart(xtimer500MS, 0);
-		
+
 		//GIVE THE SEMAPHORE
 		xSemaphoreGive(xCurrentOnLoadSemaphore);
 
@@ -640,6 +640,7 @@ void PRVGADraw_Task(void *pvParameters )
 
 static void loadControlTask2(void *pvParameters)
 {
+	int localSystemState = NORMALSTATE;
 	int receivedSwitchValue = 0;
 	bool isStable = false;
 	while (1)
@@ -673,9 +674,19 @@ static void loadControlTask2(void *pvParameters)
 						TimerStart(xtimer500MS, 0);
 					}
 				}
+
+				//Check to see if stability reached
+
+				if(currentAssignedLoads == 0b11111){
+					if (xQueueSend(xSystemStateQueue, &(localSystemState), 50/portTICK_PERIOD_MS) == pdPASS)
+					{
+						printf("Normal mode\n");
+					}
+				}
 				//RELEASE THE SEMAPHORE
 				xSemaphoreGive(xCurrentOnLoadSemaphore);
 			} 
+			
 		}
 		else {
 			//Maintenance state
