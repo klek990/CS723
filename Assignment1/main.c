@@ -342,7 +342,7 @@ static void pollWallSwitchesTask(void *pvParameters){
 				}
 			}
 		}
-		vTaskDelay(500);
+		vTaskDelay(100);
 	}
 }
 
