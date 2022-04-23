@@ -667,6 +667,7 @@ static void loadControlTask2(void *pvParameters)
 					}
 					if(leftMostBitPos != -1){
 						printf("System stable. Turning on Load");
+						printf("MSB Load is %d", leftMostBitPos+1);
 						currentAssignedLoads |= (1 << leftMostBitPos);
 					}
 				}
