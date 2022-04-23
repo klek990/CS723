@@ -79,6 +79,12 @@ struct signalInfoStruct
 	float currentPeriod;
 } signalInfo;
 
+struct wallSwitchStruct
+{
+	int prevSwitch;
+	int nextSwitch;
+} wallSwitchInfo;
+
 typedef struct{
 	unsigned int x1;
 	unsigned int y1;
@@ -322,21 +328,26 @@ static void processSignalTask(void *pvParameters)
  * 		Red LED = off
  * 		Green LED = on */
 static void pollWallSwitchesTask(void *pvParameters){
+	struct wallSwitchStruct sendWallSwitchStruct;
 	while (1)
 	{
-		/* Read which wall switch is triggered */
 		prevWallSwitchValue = sendWallSwitchValue;
 		sendWallSwitchValue = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111;
+
 		if(prevWallSwitchValue != sendWallSwitchValue){
-			if (xQueueSend(xWallSwitchQueue, &sendWallSwitchValue, NULL) == pdPASS)
+			if (xQueueSend(xWallSwitchQueue, &sendWallSwitchStruct, NULL) == pdPASS)
 			{
+				/* Read which wall switch is triggered */
+				sendWallSwitchStruct.prevSwitch = prevWallSwitchValue;
+				sendWallSwitchStruct.nextSwitch = sendWallSwitchValue;
+
 				if (currentSystemState == MAINTENANCESTATE)
 				{
 					printf("Maintenance mode. Wall switch value sent to queue: %d \n", sendWallSwitchValue);
 				}
 			}
 		}
-		vTaskDelay(500);
+		// vTaskDelay(500);
 	}
 }
 
@@ -641,8 +652,10 @@ void PRVGADraw_Task(void *pvParameters )
 static void loadControlTask2(void *pvParameters)
 {
 	int localSystemState = NORMALSTATE;
-	int receivedSwitchValue = 0;
+	struct wallSwitchStruct receivedSwitchValue;
 	bool isStable = false;
+	int switchDifference = 0;
+	
 	while (1)
 	{
 		if (currentSystemState == NORMALSTATE){
@@ -657,7 +670,11 @@ static void loadControlTask2(void *pvParameters)
 				{
 					printf("\nAcknowledged Manual Switch Change in LOAD STATE\n");
 					//And because we are not allowed to turn any switches on, but we cann turn them off;
-					currentAssignedLoads &= receivedSwitchValue;
+
+					switchDifference = receivedSwitchValue.prevSwitch ^ receivedSwitchValue.nextSwitch;
+
+					currentAssignedLoads |= switchDifference ^ receivedSwitchValue.nextSwitch;
+
 					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 				}
@@ -705,7 +722,7 @@ static void loadControlTask2(void *pvParameters)
 			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS))
 			{
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
-				currentAssignedLoads = receivedSwitchValue;
+				currentAssignedLoads = receivedSwitchValue.nextSwitch;
 				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, 0b00000);
 				xSemaphoreGive(xCurrentOnLoadSemaphore);
@@ -781,7 +798,7 @@ int main(void)
 	initCreateTasks();
 
 	xSystemStateQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
-	xWallSwitchQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
+	xWallSwitchQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct wallSwitchStruct));
 	xSystemStabilityQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
 	xSignalInfoQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct signalInfoStruct));
 	xVGAFrequencyData = xQueueCreate( 100, sizeof(float) );
