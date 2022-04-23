@@ -714,6 +714,7 @@ static void loadControlTask2(void *pvParameters)
 
 						if(requestedBitSet == false && previousBitSet == true){
 							currentAssignedLoads = (currentAssignedLoads & ~(1 << i));
+							printf("\nLOAD INDEX TURNED OFF IS AT: %d, LOAD OFF (i+1) is: %d\n", i, i+1);
 						}
 					}
 					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
@@ -773,14 +774,16 @@ static void loadControlTask2(void *pvParameters)
 					//if a switch has been requested to turn off, turn off the load at that location
 					if(requestedBitSet == false && previousBitSet == true){
 						currentAssignedLoads = (currentAssignedLoads & ~(1 << i));
+						printf("\nLOAD INDEX TURNED OFF IS AT: %d, LOAD OFF (i+1) is: %d\n", i, i+1);
 					} 
 					//otherwise if it has been requested to turn on, turn it on
 					else if ((requestedBitSet == true && previousBitSet == false)){
 						currentAssignedLoads = (currentAssignedLoads | (1 << i));
+						printf("\nLOAD INDEX TURNED ON IS AT: %d, LOAD ON (i+1) is: %d\n", i, i+1);
 					}
 				}
 
-
+				printf("\nAcknowledged Manual Switch Change in MAINTENANCE STATE\n");
 				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, 0b00000);
 				xSemaphoreGive(xCurrentOnLoadSemaphore);
