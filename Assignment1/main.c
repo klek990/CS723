@@ -656,7 +656,7 @@ static void loadControlTask2(void *pvParameters)
 					//TURN ON MSB
 					printf("System stable. Turning on Load");
 					
-					int leftMostBitPos = 0;
+					int leftMostBitPos = -1;
 					int compare = 0b10000;
 					for(int i = 4; i < -1; i--){
 						if((currentAssignedLoads&0b11111) & compare == 0){
@@ -664,12 +664,8 @@ static void loadControlTask2(void *pvParameters)
 							break;
 						}
 						compare = compare >> 1;
-						if(compare == 0){
-							leftMostBitPos = 0;
-							break;
-						}
 					}
-					if(leftMostBitPos != 0){
+					if(leftMostBitPos != -1){
 						currentAssignedLoads |= (1 << leftMostBitPos);
 					}
 				}
