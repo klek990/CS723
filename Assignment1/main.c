@@ -679,7 +679,7 @@ static void loadControlTask2(void *pvParameters)
 					//If the flag syaing it has been serviced hasnt been set, set it to true
 					if(!firstLoadShed){
 						firstLoadShed = true;
-						TimerStart(xtimer500MS, 0);
+						xTimerStart(xtimer500MS, 0);
 					}
 				}
 				//write to leds
