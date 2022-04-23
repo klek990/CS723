@@ -658,6 +658,8 @@ static void loadControlTask2(void *pvParameters)
 					printf("\nAcknowledged Manual Switch Change in LOAD STATE\n");
 					//And because we are not allowed to turn any switches on, but we cann turn them off;
 					currentAssignedLoads &= receivedSwitchValue;
+					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
+					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 				}
 				if(isStable){
 					//TURN ON MSB
