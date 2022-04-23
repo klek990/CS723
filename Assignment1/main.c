@@ -117,7 +117,38 @@ bool xTimer500Expired = false;
 
 bool firstLoadShed = false; 
 
+//Load control 2 globals for test
+//Start off all loads as 
+int currentAssignedLoads = 0b00000;
+SemaphoreHandle_t xCurrentOnLoadSemaphore;
+
+
 // Callbacks
+
+/*
+void xTimer200MSCallback(TimerHandle_t xTimer)
+{
+	//Test Statement
+	printf("TIMER 200 MS EXPIRED\n");
+
+	// If first load is not shed within 200ms, shed load manually
+	if(!firstLoadShed)
+	{
+		sumOfLoads += pow(2, loadsToChange);
+		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
+		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
+		printf("RoC out of bounds. Load shed: %d\n\n", sumOfLoads);
+		loadsToChange++;
+
+		// After first load is shed, start the 500ms timer 
+		xTimerStart(xtimer500MS, 0);
+
+		firstLoadShed = true;
+	}
+	firstLoadShed = false;
+	xTimerStop(xtimer200MS, 0);
+}
+*/
 
 void xTimer200MSCallback(TimerHandle_t xTimer)
 {
@@ -127,18 +158,22 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 	/* If first load is not shed within 200ms, shed load manually */
 	if(!firstLoadShed)
 	{
-		sumOfLoads += pow(2, loadsToChange);
-		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
-		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
-		printf("RoC out of bounds. Load shed: %d\n\n", sumOfLoads);
-		loadsToChange++;
+		//TAKE THE SEMAPHORE
+		xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
+
+		//DO LOAD SHEDDING
+		currentAssignedLoads = currentAssignedLoads&(currentAssignedLoads - 1);
+
+		//Write to LEDS
+		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, ~currentAssignedLoads & 0b11111);
+		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, currentAssignedLoads & 0b11111);
+
+		//GIVE THE SEMAPHORE
+		xSemaphoreGive(xCurrentOnLoadSemaphore);
 
 		/* After first load is shed, start the 500ms timer */
 		xTimerStart(xtimer500MS, 0);
-
-		firstLoadShed = true;
 	}
-	firstLoadShed = false;
 	xTimerStop(xtimer200MS, 0);
 }
 
@@ -347,16 +382,13 @@ static void manageSystemStateTask(void *pvParameters)
 					// Restore the system to what it was before
 					currentSystemState = prevStateBeforeMaintenance;
 					maintenanceActivated = false;
-					wallSwitchValue = IORD(SLIDE_SWITCH_BASE, 0);
 
+					/*wallSwitchValue = IORD(SLIDE_SWITCH_BASE, 0);
 					printf("Overwriting sumOfLoads with %d", wallSwitchValue);
-
-
-					
 					loadsToChange = __builtin_popcount(wallSwitchValue);
 					sumOfLoads = wallSwitchValue;
 					printf("Sum to shed: %d\n", wallSwitchValue);
-					printf("Pop count to shed: %d\n", loadsToChange);
+					printf("Pop count to shed: %d\n", loadsToChange); */
 				}
 			}
 
@@ -402,6 +434,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 							printf("\nStability Information added to loadcontrol queue: %d\n", isStable);	
 							//Start the 200ms timer to show that first loadshedding must happen
 							xTimerStart(xtimer200MS, 0);
+							firstLoadShed = false;
 						}
 					}
 				}
@@ -602,6 +635,61 @@ void PRVGADraw_Task(void *pvParameters )
 	}
 }
 
+
+static void loadControlTask2(void *pvParameters)
+{
+	int receivedSwitchValue = 0;
+	bool isStable = false;
+	while (1)
+	{
+		if (currentSystemState == NORMALSTATE){
+			//DO NOTHING IN THE NORMAL STATE
+		} 
+		else if (currentSystemState == LOADSTATE){
+			if (xQueueReceive(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS){
+				//Take the semaphore
+				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
+				if(isStable){
+					//TURN ON MSB
+					currentAssignedLoads = currentAssignedLoads | (currentAssignedLoads + 1);
+
+					//Write to LEDS
+					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, ~currentAssignedLoads & 0b11111);
+					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, currentAssignedLoads & 0b11111);
+				}
+				else {
+					//TURN OFF LSB 
+					currentAssignedLoads = currentAssignedLoads&(currentAssignedLoads - 1);
+
+					//Write to LEDS
+					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, ~currentAssignedLoads & 0b11111);
+					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, currentAssignedLoads & 0b11111);
+
+					//If the flag syaing it has been serviced hasnt been set, set it to true
+					if(!firstLoadShed){
+						firstLoadShed = true;
+						TimerStart(xtimer500MS, 0);
+					}
+				}
+				//RELEASE THE SEMAPHORE
+				xSemaphoreGive(xCurrentOnLoadSemaphore);
+			} 
+		}
+		else {
+			//Maintenance state
+			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS))
+			{
+				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, receivedSwitchValue & 0b11111);
+				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~receivedSwitchValue & 0b11111);
+
+				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
+					currentAssignedLoads = receivedSwitchValue;
+				xSemaphoreGive(xCurrentOnLoadSemaphore);
+			}
+		}
+	}
+}
+
 int initCreateTasks(void)
 {
 	// xTaskCreate( PRVGADraw_Task, "DrawTsk", configMINIMAL_STACK_SIZE, NULL, PRVGADraw_Task_P, &PRVGADraw );
@@ -618,10 +706,11 @@ int initCreateTasks(void)
 	xTaskCreate(checkSystemStabilityTask, "checkSystemStabilityTask", configMINIMAL_STACK_SIZE,
 				mainREG_TEST_4_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
 
-	xTaskCreate(loadControlTask, "loadControlTask", configMINIMAL_STACK_SIZE,
-				mainREG_TEST_5_PARAMETER, mainREG_TEST_PRIORITY + 4, NULL);
+	//xTaskCreate(loadControlTask, "loadControlTask", configMINIMAL_STACK_SIZE,
+				//mainREG_TEST_5_PARAMETER, mainREG_TEST_PRIORITY + 4, NULL);
 
-	
+	xTaskCreate(loadControlTask2, "loadControlTask2", configMINIMAL_STACK_SIZE,
+			mainREG_TEST_5_PARAMETER, mainREG_TEST_PRIORITY + 4, NULL);
 
 	
 
@@ -693,6 +782,18 @@ int main(void)
 	{
 		xSemaphoreGive(xSystemStateSemaphore);
 		printf("System State Semaphore successfully created\n");
+	}
+
+	xCurrentOnLoadSemaphore = xSemaphoreCreateBinary();
+
+	if (xCurrentOnLoadSemaphore == NULL)
+	{
+		printf("Unable to Create xCurrentOnLoadSemaphore\n");
+	}
+	else
+	{
+		xSemaphoreGive(xCurrentOnLoadSemaphore);
+		printf("xCurrentOnLoadSemaphore successfully created\n");
 	}
 
 	xtimer200MS = xTimerCreate("timer200MS", 200 / portTICK_PERIOD_MS, pdFALSE, (void *)0, xTimer200MSCallback);
