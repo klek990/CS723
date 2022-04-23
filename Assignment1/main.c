@@ -79,6 +79,12 @@ struct signalInfoStruct
 	float currentPeriod;
 } signalInfo;
 
+struct switchInfoStruct
+{
+	int previousValue;
+	int requestedValue;
+} switchInfo;
+
 typedef struct{
 	unsigned int x1;
 	unsigned int y1;
@@ -321,13 +327,18 @@ static void processSignalTask(void *pvParameters)
  * 		Red LED = off
  * 		Green LED = on */
 static void pollWallSwitchesTask(void *pvParameters){
+
+	struct switchInfoStruct sentSwitchInfo;
 	while (1)
 	{
 		/* Read which wall switch is triggered */
 		prevWallSwitchValue = sendWallSwitchValue;
 		sendWallSwitchValue = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111;
 		if(prevWallSwitchValue != sendWallSwitchValue){
-			if (xQueueSend(xWallSwitchQueue, &sendWallSwitchValue, NULL) == pdPASS)
+
+			sentSwitchInfo.previousValue = prevWallSwitchValue;
+			sentSwitchInfo.requestedValue = sendWallSwitchValue;
+			if (xQueueSend(xWallSwitchQueue, &sentSwitchInfo, NULL) == pdPASS)
 			{
 				if (currentSystemState == MAINTENANCESTATE)
 				{
@@ -672,7 +683,7 @@ void PRVGADraw_Task(void *pvParameters )
 static void loadControlTask2(void *pvParameters)
 {
 	int localSystemState = NORMALSTATE;
-	int receivedSwitchValue = 0;
+	struct switchInfoStruct receivedSwitchValue;
 	bool isStable = false;
 	while (1)
 	{
@@ -688,7 +699,23 @@ static void loadControlTask2(void *pvParameters)
 				{
 					printf("\nAcknowledged Manual Switch Change in LOAD STATE\n");
 					//And because we are not allowed to turn any switches on, but we cann turn them off;
-					currentAssignedLoads &= receivedSwitchValue;
+
+					bool requestedBitSet = false;
+					bool previousBitSet = false;
+					for(int i = 0; i < 5; i++){
+						//Go bit by bit and compare
+						requestedBitSet = (receivedSwitchValue.requestedValue & (1 << i));
+						previousBitSet = (receivedSwitchValue.previousValue & (1 << i));
+						//If the requested value is the same as the current load value do nothing
+
+						//If they are different, check:
+						//If previous is set, and requested is not set, Apply it (I.e turn off the load)
+						//If previous is not set and requested is set, IGNORE IT
+
+						if(requestedBitSet == false && previousBitSet == true){
+							currentAssignedLoads = (currentAssignedLoads & ~(1 << i));
+						}
+					}
 					IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 				}
@@ -736,7 +763,24 @@ static void loadControlTask2(void *pvParameters)
 			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS))
 			{
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
-				currentAssignedLoads = receivedSwitchValue;
+				bool requestedBitSet = false;
+				bool previousBitSet = false;
+				for(int i = 0; i < 5; i++){
+					//Go bit by bit and compare
+					requestedBitSet = (receivedSwitchValue.requestedValue & (1 << i));
+					previousBitSet = (receivedSwitchValue.previousValue & (1 << i));
+
+					//if a switch has been requested to turn off, turn off the load at that location
+					if(requestedBitSet == false && previousBitSet == true){
+						currentAssignedLoads = (currentAssignedLoads & ~(1 << i));
+					} 
+					//otherwise if it has been requested to turn on, turn it on
+					else if ((requestedBitSet == true && previousBitSet == false)){
+						currentAssignedLoads = (currentAssignedLoads | (1 << i));
+					}
+				}
+
+
 				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, 0b00000);
 				xSemaphoreGive(xCurrentOnLoadSemaphore);
@@ -812,7 +856,7 @@ int main(void)
 	initCreateTasks();
 
 	xSystemStateQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
-	xWallSwitchQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
+	xWallSwitchQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct switchInfoStruct));
 	xSystemStabilityQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
 	xSignalInfoQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct signalInfoStruct));
 	xVGAFrequencyData = xQueueCreate( 100, sizeof(float) );
