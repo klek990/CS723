@@ -659,7 +659,6 @@ static void loadControlTask2(void *pvParameters)
 					//And because we are not allowed to turn any switches on, but we cann turn them off;
 					currentAssignedLoads &= receivedSwitchValue;
 				}
-
 				if(isStable){
 					//TURN ON MSB
 					printf("System stable. Turning on Load");
@@ -703,11 +702,13 @@ static void loadControlTask2(void *pvParameters)
 			//Maintenance state
 			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS))
 			{
-				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, receivedSwitchValue & 0b11111);
+				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
+
+				currentAssignedLoads = receivedSwitchValue;
+				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, 0b00000);
 
-				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
-					currentAssignedLoads = receivedSwitchValue;
+			
 				xSemaphoreGive(xCurrentOnLoadSemaphore);
 			}
 		}
