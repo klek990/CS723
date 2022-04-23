@@ -121,7 +121,8 @@ bool firstLoadShed = false;
 //Start off all loads as 
 int currentAssignedLoads = 0b11111;
 SemaphoreHandle_t xCurrentOnLoadSemaphore;
-
+int prevWallSwitchValue = 0;
+int sendWallSwitchValue = 0;
 
 // Callbacks
 
@@ -320,22 +321,21 @@ static void processSignalTask(void *pvParameters)
  * When load is shed:
  * 		Red LED = off
  * 		Green LED = on */
-static void pollWallSwitchesTask(void *pvParameters)
-{
-	int sendWallSwitchValue = 0;
-
+static void pollWallSwitchesTask(void *pvParameters){
 	while (1)
 	{
 		/* Read which wall switch is triggered */
+		prevWallSwitchValue = sendWallSwitchValue;
 		sendWallSwitchValue = IORD_ALTERA_AVALON_PIO_DATA(SLIDE_SWITCH_BASE) & 0b11111;
-		if (xQueueSend(xWallSwitchQueue, &sendWallSwitchValue, NULL) == pdPASS)
-		{
-			if (currentSystemState == MAINTENANCESTATE)
+		if(prevWallSwitchValue != sendWallSwitchValue){
+			if (xQueueSend(xWallSwitchQueue, &sendWallSwitchValue, NULL) == pdPASS)
 			{
-				printf("Maintenance mode. Wall switch value sent to queue: %d \n", sendWallSwitchValue);
+				if (currentSystemState == MAINTENANCESTATE)
+				{
+					printf("Maintenance mode. Wall switch value sent to queue: %d \n", sendWallSwitchValue);
+				}
 			}
 		}
-
 		vTaskDelay(500);
 	}
 }
@@ -652,24 +652,26 @@ static void loadControlTask2(void *pvParameters)
 			if (xQueueReceive(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS){
 				//Take the semaphore
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
+
+				if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS))
+				{
+					printf("\nAcknowledged Manual Switch Change in LOAD STATE\n");
+					//And because we are not allowed to turn any switches on, but we cann turn them off;
+					currentAssignedLoads &= receivedSwitchValue;
+				}
+
 				if(isStable){
 					//TURN ON MSB
-					
-					int leftMostBitPos = -1;
-					int compare = 0b10000;
-					for(int i = 4; i < -1; i--){
-						if((currentAssignedLoads&0b11111) & compare == 0){
-							leftMostBitPos = i;
-							printf("MSB Load is %d", leftMostBitPos+1);
-							break;
+					printf("System stable. Turning on Load");
+					//FIGURE OUT WHERE MSB unset bit is:
+					int pos = 0;
+					int temp = currentAssignedLoads;
+					for (int i=0; temp>0; temp>>=1, i++){
+						if ((temp & 1) == 0){
+							pos = i;  
 						}
-						compare = compare >> 1;
 					}
-					if(leftMostBitPos != -1){
-						printf("System stable. Turning on Load");
-						printf("MSB Load is %d", leftMostBitPos+1);
-						currentAssignedLoads |= (1 << leftMostBitPos);
-					}
+					currentAssignedLoads |= (1 << pos);
 				}
 				else {
 					//TURN OFF LSB 
