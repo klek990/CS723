@@ -159,13 +159,11 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 {
 	//Test Statement
 	printf("TIMER 200 MS EXPIRED\n");
-
+	xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 	/* If first load is not shed within 200ms, shed load manually */
 	if(!firstLoadShed)
 	{
 		//TAKE THE SEMAPHORE
-		xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
-
 		//DO LOAD SHEDDING
 		currentAssignedLoads = currentAssignedLoads&(currentAssignedLoads - 1);
 
@@ -177,10 +175,8 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 		/* After first load is shed, start the 500ms timer */
 		xTimerStart(xtimer500MS, 0);
 
-		//GIVE THE SEMAPHORE
-		xSemaphoreGive(xCurrentOnLoadSemaphore);
-
 	}
+	xSemaphoreGive(xCurrentOnLoadSemaphore);
 	xTimerStop(xtimer200MS, 0);
 }
 
@@ -693,10 +689,10 @@ static void loadControlTask2(void *pvParameters)
 		else if (currentSystemState == LOADSTATE){
 			if (xQueueReceive(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS){
 				//Take the semaphore
-				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
-
+				
 				if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS) == pdPASS)
 				{
+					xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 					printf("\nAcknowledged Manual Switch Change in LOAD STATE\n");
 					//And because we are not allowed to turn any switches on, but we cann turn them off;
 
@@ -720,10 +716,13 @@ static void loadControlTask2(void *pvParameters)
 
 							IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 							IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
+
 							vTaskDelay(50);
 						}
 					}
+					xSemaphoreGive(xCurrentOnLoadSemaphore);
 				}
+				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 				if(isStable){
 					//TURN ON MSB
 					printf("System stable. Turning on Load");
