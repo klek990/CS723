@@ -119,7 +119,7 @@ bool firstLoadShed = false;
 
 //Load control 2 globals for test
 //Start off all loads as 
-int currentAssignedLoads = 0b00000;
+int currentAssignedLoads = 0b11111;
 SemaphoreHandle_t xCurrentOnLoadSemaphore;
 
 
@@ -655,7 +655,23 @@ static void loadControlTask2(void *pvParameters)
 				if(isStable){
 					//TURN ON MSB
 					printf("System stable. Turning on Load");
-					currentAssignedLoads = currentAssignedLoads | (currentAssignedLoads + 1);
+					
+					int leftMostBitPos = 0;
+					int compare = 0b10000;
+					for(int i = 4; i < -1; i--){
+						if((currentAssignedLoads&0b11111) & compare == 0){
+							leftMostBitPos = i;
+							break;
+						}
+						compare = compare >> 1;
+						if(compare == 0){
+							leftMostBitPos = 0;
+							break;
+						}
+					}
+					if(leftMostBitPos != 0){
+						currentAssignedLoads |= (1 << leftMostBitPos);
+					}
 				}
 				else {
 					//TURN OFF LSB 
@@ -668,7 +684,6 @@ static void loadControlTask2(void *pvParameters)
 						TimerStart(xtimer500MS, 0);
 					}
 				}
-
 				//write to leds
 				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
