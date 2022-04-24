@@ -57,10 +57,6 @@ TaskHandle_t PRVGADraw;
 /* 0 = Normal, 1 = Load managing, 2 = Maintenance */
 SemaphoreHandle_t xSystemStateSemaphore;
 
-/* Frequency thresholds configured using keyboard */
-SemaphoreHandle_t lowerThreshold;
-SemaphoreHandle_t upperThreshold;
-
 // Define Queues
 static QueueHandle_t xSignalInfoQueue;
 static QueueHandle_t xSystemStateQueue;
@@ -74,9 +70,9 @@ TimerHandle_t xtimer500MS;
 /* Structures for received signal (freq, RoC, period) and which loads to shed */
 struct signalInfoStruct
 {
-	float currentRoc;
-	float currentFreq;
-	float currentPeriod;
+	double currentRoc;
+	double currentFreq;
+	double currentPeriod;
 } signalInfo;
 
 struct switchInfoStruct
@@ -97,7 +93,7 @@ static void pollWallSwitchesTask(void *pvParameters);
 static void manageSystemStateTask(void *pvParameters);
 
 /* Global frequency variables to be passed in queues */
-float freqNext = 0, freqPrev = 0, freqRoc = 0, period = 0;
+double freqNext = 0, freqPrev = 0, freqRoc = 0, period = 0;
 int samplesPrev = 0, samplesNext = 0, avgSamples = 0;
 
 // For system state management
@@ -108,8 +104,8 @@ bool maintenanceActivated = false;
 int currentSystemState = 0;
 
 // Thresholds
-float rocThreshold = 7;
-float freqThreshold = 48;
+double rocThreshold = 7;
+double freqThreshold = 48;
 
 /* loadControlTask globals */
 int loadsToChange = 0;
@@ -130,6 +126,9 @@ int currentAssignedLoads = 0b11111;
 SemaphoreHandle_t xCurrentOnLoadSemaphore;
 int prevWallSwitchValue = 0;
 int sendWallSwitchValue = 0;
+
+bool recordFreq = false, recordRoc = false;
+char freqThresholdBuffer[200], rocThresholdBuffer[200];
 
 // Callbacks
 
@@ -220,16 +219,16 @@ void readFrequencyISR(void *context)
 
 	avgSamples = (samplesNext + samplesPrev) / 2;
 
-	freqPrev = SAMPLINGFREQUENCY / (float)samplesPrev;
-	freqNext = SAMPLINGFREQUENCY / (float)samplesNext;
+	freqPrev = SAMPLINGFREQUENCY / (double)samplesPrev;
+	freqNext = SAMPLINGFREQUENCY / (double)samplesNext;
 
-	period = freqNext / (float)2;
+	period = freqNext / (double)2;
 
 	/* RoC should be irrespective of  */
 	freqRoc = ((freqNext - freqPrev) * SAMPLINGFREQUENCY) / avgSamples;
 	if (freqRoc < 0)
 	{
-		freqRoc *= (float)-1;
+		freqRoc *= (double)-1;
 	}
 
 	// printf("Freq Next: %0.2f\n", freqNext);
@@ -246,6 +245,7 @@ static void readKeyboardISR(void *context, alt_u32 id)
 	int status = 0;
 	unsigned char key = 0;
 	KB_CODE_TYPE decode_mode;
+	char exitCode[16] = "5a";
 	status = decode_scancode(context, &decode_mode, &key, &ascii);
 	if (status == 0) // success
 	{
@@ -253,12 +253,63 @@ static void readKeyboardISR(void *context, alt_u32 id)
 		switch (decode_mode)
 		{
 			case KB_ASCII_MAKE_CODE:
-				printf("ASCII   : %c\n", ascii);
+				printf("ascii: %c\n\n", ascii);
+				/* If keyboard == F, start recording frequency threshold */
+				if (ascii == 'F' && !recordFreq)
+				{
+					recordFreq = true;
+					printf("RECORDING FREQUENCY\n\n\n\n");
+					break;
+				}
+				/* Else if keyboard == R, start recording ROC threshold */
+				else if (ascii == 'R' && !recordRoc)
+				{
+					recordRoc = true;
+					printf("RECORDING ROC\n\n\n\n");
+					break;
+				}
+
+				/* Stop recording keystrokes */
+				if ((ascii == 'F' && recordFreq) || (ascii == 'R' && recordRoc))
+				{
+					recordFreq = false;
+					recordRoc = false;
+
+
+					printf("FREQ THRESHOLD: %hhu\n", freqThresholdBuffer[2]);
+					printf("ROC THRESHOLD: %d\n", sizeof(freqThresholdBuffer));
+					
+
+					// /* Assign input values back to the system thresholds as doubles */
+					// freqThreshold = atof(freqThresholdBuffer);
+					// rocThreshold = atof(rocThresholdBuffer);
+					// double test = strtod("20");
+
+					// /* Empty buffers */
+					// memset(freqThresholdBuffer, 0, sizeof(freqThresholdBuffer));
+					// memset(rocThresholdBuffer, 0, sizeof(rocThresholdBuffer));
+
+					// printf("%f, %f\n\n", test, rocThreshold);
+					break;
+				}
+
+				/* Once either flag has been set, concatenate into the respective string */
+				else if (recordFreq)
+				{
+					strncat(freqThresholdBuffer, &ascii, 1);
+					printf("%s\n\n", freqThresholdBuffer);
+				}
+				else if (recordRoc)
+				{
+					strncat(rocThresholdBuffer, &ascii, 1);
+					printf("%s\n\n", rocThresholdBuffer);
+				}
+
 				break;
 			case KB_LONG_BINARY_MAKE_CODE:
 				// do nothing
 			case KB_BINARY_MAKE_CODE:
-				printf("MAKE CODE : %x\n", key);
+				printf("MAKE CODE : %c\n", key);
 				break;
 			case KB_BREAK_CODE:
 				// do nothing
@@ -585,7 +636,7 @@ void PRVGADraw_Task(void *pvParameters )
 
 	
 
-	float freq[100], dfreq[100];
+	double freq[100], dfreq[100];
 	int i = 99, j = 0;
 	Line line_freq, line_roc;
 
@@ -654,10 +705,10 @@ void PRVGADraw_Task(void *pvParameters )
 			char systemStabilityBuffer[20];
 			char VGARocBuffer[20];
 			char VGAFreqBuffer[20];
-			float VGARoc = rocThreshold;
-			float VGAFreq = freqThreshold;
+			double VGARoc = rocThreshold;
+			double VGAFreq = freqThreshold;
 			
-			/* Converting values from float to string */
+			/* Converting values from double to string */
 			snprintf(VGARocBuffer, 50, "%.2f", VGARoc);
 			snprintf(VGAFreqBuffer, 50, "%.2f", VGAFreq);
 
@@ -882,7 +933,7 @@ int main(void)
 	xWallSwitchQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct switchInfoStruct));
 	xSystemStabilityQueue = xQueueCreate(SystemStateQueueSize, sizeof(int));
 	xSignalInfoQueue = xQueueCreate(SystemStateQueueSize, sizeof(struct signalInfoStruct));
-	xVGAFrequencyData = xQueueCreate( 100, sizeof(float) );
+	xVGAFrequencyData = xQueueCreate( 100, sizeof(double) );
 
 	
 	if (xSystemStateQueue == NULL)
