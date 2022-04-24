@@ -680,6 +680,11 @@ static void loadControlTask2(void *pvParameters)
 	int localSystemState = NORMALSTATE;
 	struct switchInfoStruct receivedSwitchValue;
 	bool isStable = false;
+
+	IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
+	IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
+
+
 	while (1)
 	{
 		if (currentSystemState == NORMALSTATE){
