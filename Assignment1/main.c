@@ -128,32 +128,11 @@ int prevWallSwitchValue = 0;
 int sendWallSwitchValue = 0;
 
 bool recordFreq = false, recordRoc = false;
+bool recordDecimalValues = false;
 char freqThresholdBuffer[200], rocThresholdBuffer[200];
+int wholeValue = 0, decimalValue = 0;
 
-// Callbacks
-
-/*
-void xTimer200MSCallback(TimerHandle_t xTimer)
-{
-	//Test Statement
-	printf("TIMER 200 MS EXPIRED\n");
-	// If first load is not shed within 200ms, shed load manually
-	if(!firstLoadShed)
-	{
-		sumOfLoads += pow(2, loadsToChange);
-		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
-		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
-		printf("RoC out of bounds. Load shed: %d\n\n", sumOfLoads);
-		loadsToChange++;
-		// After first load is shed, start the 500ms timer 
-		xTimerStart(xtimer500MS, 0);
-		firstLoadShed = true;
-	}
-	firstLoadShed = false;
-	xTimerStop(xtimer200MS, 0);
-}
-*/
-
+/* Callback functions */
 void xTimer200MSCallback(TimerHandle_t xTimer)
 {
 	//Test Statement
@@ -230,22 +209,19 @@ void readFrequencyISR(void *context)
 	{
 		freqRoc *= (double)-1;
 	}
-
-	// printf("Freq Next: %0.2f\n", freqNext);
-	// printf("Freq Prev: %0.2f\n", freqPrev);
-	// printf("Freq RoC: %0.2f\n", freqRoc);
 	
 	return;
 }
 
-/* Read keyboard */
+/* 'ascii' holds the character, can be represented as upper case of that letter (pressing k gives K)
+* 	Further, we can simply read the letter input to manage the upper and lower threshold. If 'F' or 'R' is
+*	pressed, we then read the next set of number key strokes to assign a value to the threshold/ROC */
 static void readKeyboardISR(void *context, alt_u32 id)
 {
 	char ascii;
 	int status = 0;
 	unsigned char key = 0;
 	KB_CODE_TYPE decode_mode;
-	char exitCode[16] = "5a";
 	status = decode_scancode(context, &decode_mode, &key, &ascii);
 	if (status == 0) // success
 	{
@@ -269,60 +245,81 @@ static void readKeyboardISR(void *context, alt_u32 id)
 					break;
 				}
 
-				/* Stop recording keystrokes */
-				if ((ascii == 'F' && recordFreq) || (ascii == 'R' && recordRoc))
+				/* Record first set of values (before decimal point) for frequency */
+				if (ascii == 'F' && recordFreq)
 				{
-					recordFreq = false;
-					recordRoc = false;
+					wholeValue = atoi(freqThresholdBuffer);
 
+					/* Empty buffer and start recording decimal value */
+					memset(freqThresholdBuffer, 0, sizeof(freqThresholdBuffer));
+					printf("Now enter digits after decimal.\n\n");
+					recordDecimalValues = true;
 
-					printf("FREQ THRESHOLD: %hhu\n", freqThresholdBuffer[2]);
-					printf("ROC THRESHOLD: %d\n", sizeof(freqThresholdBuffer));
-					
+					break;
+				}
+				/* Record first set of values (before decimal point) for ROC */
+				else if (ascii == 'R' && recordRoc)
+				{
+					wholeValue = atoi(rocThresholdBuffer, NULL);
 
-					// /* Assign input values back to the system thresholds as doubles */
-					// freqThreshold = atof(freqThresholdBuffer);
-					// rocThreshold = atof(rocThresholdBuffer);
-					// double test = strtod("20");
+					memset(rocThresholdBuffer, 0, sizeof(rocThresholdBuffer));
+					printf("Now enter digits after decimal.\n\n");
+					printf("Current whole value: %d\n", wholeValue);
 
-					// /* Empty buffers */
-					// memset(freqThresholdBuffer, 0, sizeof(freqThresholdBuffer));
-					// memset(rocThresholdBuffer, 0, sizeof(rocThresholdBuffer));
-
-					// printf("%f, %f\n\n", test, rocThreshold);
+					recordDecimalValues = true;
 					break;
 				}
 
-				/* Once either flag has been set, concatenate into the respective string */
-				else if (recordFreq)
+				/* Stop recording decimal value if pressed for frequency */
+				if (recordDecimalValues && ascii == 'D' && recordFreq)
+				{
+					decimalValue = atoi(freqThresholdBuffer, NULL);
+					memset(freqThresholdBuffer, 0, sizeof(freqThresholdBuffer));
+
+					recordDecimalValues = false;
+					recordFreq = false;
+
+					freqThreshold = (double)(wholeValue + decimalValue/(double)100);
+					printf("Combined value for Freq: %f\n\n\n\n", freqThreshold);
+					break;
+				}
+				/* Stop recording decimal value if pressed for ROC */
+				else if (recordDecimalValues && ascii == 'D' && recordRoc)
+				{
+					decimalValue = atoi(rocThresholdBuffer, NULL);
+					memset(rocThresholdBuffer, 0, sizeof(rocThresholdBuffer));
+
+					recordDecimalValues = false;
+					recordRoc = false;
+
+					rocThreshold = (double)(wholeValue + decimalValue/(float)100);
+					printf("Combined value for ROC: %f\n\n\n", rocThreshold);
+					break;
+				}
+
+				/* Once recording started, concatenate into the respective string */
+				if (recordFreq)
 				{
 					strncat(freqThresholdBuffer, &ascii, 1);
-					printf("%s\n\n", freqThresholdBuffer);
+					printf("Started recording. Frequency String in Buffer: %s\n\n", freqThresholdBuffer);
 				}
 				else if (recordRoc)
 				{
 					strncat(rocThresholdBuffer, &ascii, 1);
-					printf("%s\n\n", rocThresholdBuffer);
+					printf("Started recording. ROC String in Buffer: %s\n\n", rocThresholdBuffer);
 				}
 
 				break;
 			case KB_LONG_BINARY_MAKE_CODE:
 				// do nothing
 			case KB_BINARY_MAKE_CODE:
-				printf("MAKE CODE : %c\n", key);
 				break;
 			case KB_BREAK_CODE:
 				// do nothing
 			default:
-				printf("DEFAULT   : %x\n", key);
 				break;
 		}
 	}
-
-	/* 'ascii' holds the character, can be represented as upper case of that letter (pressing k gives K)
-	 * 	Further, we can simply read the letter input to manage the upper and lower threshold. If 'U' is
-	 *	pressed, we then read the next set of number key strokes to assign a value to the upper threshold
-	 * 	vice versa for lower threshold.*/
 	
 	IOWR(SEVEN_SEG_BASE, 0, ascii);
 	return;
@@ -356,12 +353,8 @@ static void processSignalTask(void *pvParameters)
 			{
 				if (xQueueSend(xVGAFrequencyData, &sendSignalInfo.currentFreq, NULL) == pdPASS)
 				{
-					// printf("%f\n", sendSignalInfo.currentFreq);
+
 				}
-			}
-			else
-			{
-				// printf("Process signal task failed sending to queue\n");
 			}
 		}
 	}
@@ -400,7 +393,7 @@ static void pollWallSwitchesTask(void *pvParameters){
 static void manageSystemStateTask(void *pvParameters)
 {
 	printf("in here\n");
-	int latestStateValue, wallSwitchValue;
+	int latestStateValue;
 	while (1)
 	{
 		// Consume the value stored in the SystemStateQueue
@@ -426,7 +419,6 @@ static void manageSystemStateTask(void *pvParameters)
 				}
 				else
 				{
-					printf("in this section\n");
 					// Normal Operation
 					currentSystemState = latestStateValue;
 				}
@@ -437,17 +429,10 @@ static void manageSystemStateTask(void *pvParameters)
 				// Maintenance State stops load management, there
 				if (latestStateValue == MAINTENANCESTATE)
 				{
-					printf("in this if\n");
 					// Restore the system to what it was before
 					currentSystemState = prevStateBeforeMaintenance;
 					maintenanceActivated = false;
 
-					/*wallSwitchValue = IORD(SLIDE_SWITCH_BASE, 0);
-					printf("Overwriting sumOfLoads with %d", wallSwitchValue);
-					loadsToChange = __builtin_popcount(wallSwitchValue);
-					sumOfLoads = wallSwitchValue;
-					printf("Sum to shed: %d\n", wallSwitchValue);
-					printf("Pop count to shed: %d\n", loadsToChange); */
 				}
 			}
 
@@ -462,7 +447,6 @@ static void checkSystemStabilityTask(void *pvParameters)
 	struct signalInfoStruct receivedMessage;
 	bool isStable = false;
 	int systemStateUpdateValue;
-	int pxRxedMessage;
 	while (1)
 	{
 		if (xQueueReceive(xSignalInfoQueue, &(receivedMessage), 50/portTICK_PERIOD_MS) == pdPASS)
@@ -516,84 +500,6 @@ static void checkSystemStabilityTask(void *pvParameters)
 			}
 		}
 		vTaskDelay(100);
-	}
-}
-
-/* Switch loads on/off based on information in loadControlQueue (pollWallSwitches & checkSystemStability) */
-static void loadControlTask(void *pvParameters)
-{
-	int localSystemState = 0;
-	int wallSwitchTriggered = 0;
-	bool isStable = false;
-	
-	while (1)
-	{
-		// printf("CurrentSystemState: %d\n", currentSystemState);
-		/* If in load managing, check systemStability */
-		if (currentSystemState == LOADSTATE) 
-		{
-			if (xQueueReceive(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
-			{
-				/* If not stable, begin to shed loads */
-				if (!isStable)
-				{
-					printf("LoadInfoStability: %d\n", isStable);
-					printf("UNSTABLE: %f\n", freqRoc);
-
-					/* If all the loads are not shed, keep shedding loads from lowest to highest significance */
-					if (sumOfLoads < 31)
-					{
-						sumOfLoads += pow(2, loadsToChange);
-						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
-						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
-						printf("RoC out of bounds. Load shed: %d\n\n", sumOfLoads);
-						loadsToChange++;
-
-						/* Start 500ms timer when first load is shed, set flag to true. */
-						if(!firstLoadShed)
-						{
-							xTimerStart(xtimer500MS, 0);
-							firstLoadShed = true;
-						}
-					}
-				}
-
-				/* If system is stable, start turning loads back on from highest priority */
-				else if (isStable)
-				{
-					printf("STABLE: %f\n", freqRoc);
-
-					if (loadsToChange >= 0)
-					{
-						sumOfLoads -= pow(2, loadsToChange-1);
-						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, sumOfLoads & 0b11111);
-						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~sumOfLoads & 0b11111);
-						printf("System stable. Turning on Load: %d\n\n", sumOfLoads);
-						loadsToChange--;
-
-						if (sumOfLoads == 0)
-						{
-							/* Set system state to normal (0) and stop the 500ms timer */
-							localSystemState = NORMALSTATE;
-							if (xQueueSend(xSystemStateQueue, &(localSystemState), 50/portTICK_PERIOD_MS) == pdPASS)
-							{
-								printf("Normal mode\n");
-							}
-						}
-					}
-				}
-			}
-		}
-
-		/* Wall switch interaction when in maintenance state */
-		if (currentSystemState == MAINTENANCESTATE)
-		{
-			if (xQueueReceive(xWallSwitchQueue, &wallSwitchTriggered, 50/portTICK_PERIOD_MS))
-			{
-				IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, wallSwitchTriggered);
-				IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~wallSwitchTriggered & 0b11111);
-			}
-		}
 	}
 }
 
@@ -733,6 +639,32 @@ void PRVGADraw_Task(void *pvParameters )
 
 			alt_up_char_buffer_string(char_buf, "Freq Lower Threshold: ", 25, 54);
 			alt_up_char_buffer_string(char_buf, VGAFreqBuffer, 47, 54);
+
+
+			if (recordFreq)
+			{
+				alt_up_char_buffer_string(char_buf, "Recording Freq", 40, 40);
+				if (recordDecimalValues)
+				{
+					alt_up_char_buffer_string(char_buf, "Recording decimal", 40, 42);
+				}
+				else if (!recordDecimalValues)
+				{
+					alt_up_char_buffer_string(char_buf, "Recording whole  ", 40, 42);
+				}
+			}
+			else if (recordRoc)
+			{
+				alt_up_char_buffer_string(char_buf, "Recording ROC ", 40, 40);
+				if (recordDecimalValues)
+				{
+					alt_up_char_buffer_string(char_buf, "Recording decimal", 40, 42);
+				}
+				else if (!recordDecimalValues)
+				{
+					alt_up_char_buffer_string(char_buf, "Recording whole  ", 40, 42);
+				}
+			}
 			
 		}
 		vTaskDelay(10);
@@ -792,7 +724,7 @@ static void loadControlTask2(void *pvParameters)
 				
 				if(isStable){
 					//TURN ON MSB
-					printf("System stable. Turning on Load");
+					printf("System stable. Turning on Load\n");
 					//FIGURE OUT WHERE MSB unset bit is:
 					int pos = 0;
 					int temp = currentAssignedLoads;
@@ -805,7 +737,7 @@ static void loadControlTask2(void *pvParameters)
 				}
 				else {
 					//TURN OFF LSB 
-					printf("System unStable. Turning off Load");
+					printf("System unStable. Turning off Load\n");
 					currentAssignedLoads = currentAssignedLoads&(currentAssignedLoads - 1);
 
 					//If the flag syaing it has been serviced hasnt been set, set it to true
@@ -878,9 +810,6 @@ int initCreateTasks(void)
 
 	xTaskCreate(checkSystemStabilityTask, "checkSystemStabilityTask", configMINIMAL_STACK_SIZE,
 				mainREG_TEST_4_PARAMETER, mainREG_TEST_PRIORITY + 5, NULL);
-
-	//xTaskCreate(loadControlTask, "loadControlTask", configMINIMAL_STACK_SIZE,
-				//mainREG_TEST_5_PARAMETER, mainREG_TEST_PRIORITY + 4, NULL);
 
 	xTaskCreate(loadControlTask2, "loadControlTask2", configMINIMAL_STACK_SIZE,
 			mainREG_TEST_5_PARAMETER, mainREG_TEST_PRIORITY + 4, NULL);
