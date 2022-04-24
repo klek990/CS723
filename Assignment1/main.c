@@ -464,7 +464,6 @@ static void checkSystemStabilityTask(void *pvParameters)
 
 			}
 		}
-		vTaskDelay(100);
 	}
 }
 
@@ -687,37 +686,38 @@ static void loadControlTask2(void *pvParameters)
 			//DO NOTHING IN THE NORMAL STATE
 		} 
 		else if (currentSystemState == LOADSTATE){
+			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS) == pdPASS){
+				printf("\nAcknowledged Manual Switch Change in LOAD STATE\n");
+				//And because we are not allowed to turn any switches on, but we cann turn them off;
+				bool requestedBitSet = false;
+				bool previousBitSet = false;
+				for(int i = 0; i < 5; i++){
+					//Go bit by bit and compare
+					requestedBitSet = (receivedSwitchValue.requestedValue & (1 << i));
+					previousBitSet = (receivedSwitchValue.previousValue & (1 << i));
+					//If the requested value is the same as the current load value do nothing
+
+					//If they are different, check:
+					//If previous is set, and requested is not set, Apply it (I.e turn off the load)
+					//If previous is not set and requested is set, IGNORE IT
+
+					if(requestedBitSet == false && previousBitSet == true){
+						printf("\nCurrentAssignedLoads Before Change is: %d\n", currentAssignedLoads);
+						xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
+						currentAssignedLoads = (currentAssignedLoads & ~(1 << i));
+						xSemaphoreGive(xCurrentOnLoadSemaphore);
+						printf("\nLOAD INDEX TURNED OFF IS AT: %d, LOAD OFF (i+1) is: %d\n", i, i+1);
+						printf("\nCurrentAssignedLoads is Now: %d\n", currentAssignedLoads);
+
+						IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
+						IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
+					}
+				}
+			}
 			if (xQueueReceive(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS){
 				//Take the semaphore
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
-				if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS) == pdPASS)
-				{
-					printf("\nAcknowledged Manual Switch Change in LOAD STATE\n");
-					//And because we are not allowed to turn any switches on, but we cann turn them off;
 
-					bool requestedBitSet = false;
-					bool previousBitSet = false;
-					for(int i = 0; i < 5; i++){
-						//Go bit by bit and compare
-						requestedBitSet = (receivedSwitchValue.requestedValue & (1 << i));
-						previousBitSet = (receivedSwitchValue.previousValue & (1 << i));
-						//If the requested value is the same as the current load value do nothing
-
-						//If they are different, check:
-						//If previous is set, and requested is not set, Apply it (I.e turn off the load)
-						//If previous is not set and requested is set, IGNORE IT
-
-						if(requestedBitSet == false && previousBitSet == true){
-							printf("\nCurrentAssignedLoads Before Change is: %d\n", currentAssignedLoads);
-							currentAssignedLoads = (currentAssignedLoads & ~(1 << i));
-							printf("\nLOAD INDEX TURNED OFF IS AT: %d, LOAD OFF (i+1) is: %d\n", i, i+1);
-							printf("\nCurrentAssignedLoads is Now: %d\n", currentAssignedLoads);
-
-							IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
-							IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
-						}
-					}
-				}
 				/*
 				if(isStable){
 					//TURN ON MSB
