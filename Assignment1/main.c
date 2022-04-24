@@ -464,6 +464,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 
 			}
 		}
+		vTaskDelay(100);
 	}
 }
 
@@ -647,26 +648,40 @@ void PRVGADraw_Task(void *pvParameters )
 				alt_up_pixel_buffer_dma_draw_line(pixel_buf, line_roc.x1, line_roc.y1, line_roc.x2, line_roc.y2, 0x3ff << 0, 0);
 			}
 
+			/* Buffers to hold values to print on VGA */
 			char load[20];
 			char systemStateBuffer[20];
 			char systemStabilityBuffer[20];
+			char VGARocBuffer[20];
+			char VGAFreqBuffer[20];
+			float VGARoc = rocThreshold;
+			float VGAFreq = freqThreshold;
+			
+			/* Converting values from float to string */
+			snprintf(VGARocBuffer, 50, "%.2f", VGARoc);
+			snprintf(VGAFreqBuffer, 50, "%.2f", VGAFreq);
 
-			alt_up_char_buffer_string(char_buf, "Loads Shed: ", 6, 40);
-			alt_up_char_buffer_string(char_buf, itoa(currentAssignedLoads, load, 10), 18, 40);
+
+			alt_up_char_buffer_string(char_buf, "Loads Connected: ", 4, 40);
+			alt_up_char_buffer_string(char_buf, itoa(currentAssignedLoads, load, 10), 21, 40);
 			if (currentAssignedLoads < 10)
 			{
-				alt_up_char_buffer_string(char_buf, " ", 19, 40);
+				alt_up_char_buffer_string(char_buf, " ", 22, 40);
 			}
-			
 
-			alt_up_char_buffer_string(char_buf, "System State: ", 6, 44);
-			alt_up_char_buffer_string(char_buf, itoa(currentSystemState, systemStateBuffer, 10), 20, 44);
-			alt_up_char_buffer_string(char_buf, "0 = Normal  1 = Load Management  2 = Maintenance", 6, 46);
+			alt_up_char_buffer_string(char_buf, "System State: ", 4, 42);
+			alt_up_char_buffer_string(char_buf, itoa(currentSystemState, systemStateBuffer, 10), 18, 42);
+			alt_up_char_buffer_string(char_buf, "0 = Norm  1 = Load  2 = Maint", 4, 44);
 
-			alt_up_char_buffer_string(char_buf, "System Stability: ", 6, 50);
-			alt_up_char_buffer_string(char_buf, itoa(readStabiliyVGA, systemStabilityBuffer, 10), 24, 50);
-			alt_up_char_buffer_string(char_buf, "0 = Unstable  1 = Stable", 6, 52);
-			
+			alt_up_char_buffer_string(char_buf, "System Stability: ", 4, 48);
+			alt_up_char_buffer_string(char_buf, itoa(readStabiliyVGA, systemStabilityBuffer, 10), 22, 48);
+			alt_up_char_buffer_string(char_buf, "0 = Unstable  1 = Stable", 4, 50);
+
+			alt_up_char_buffer_string(char_buf, "RoC Threshold: ", 4, 54);
+			alt_up_char_buffer_string(char_buf, VGARocBuffer, 19, 54);
+
+			alt_up_char_buffer_string(char_buf, "Freq Lower Threshold: ", 25, 54);
+			alt_up_char_buffer_string(char_buf, VGAFreqBuffer, 47, 54);
 			
 		}
 		vTaskDelay(10);
@@ -723,7 +738,7 @@ static void loadControlTask2(void *pvParameters)
 				//Take the semaphore
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 
-				/*
+				
 				if(isStable){
 					//TURN ON MSB
 					printf("System stable. Turning on Load");
@@ -760,7 +775,7 @@ static void loadControlTask2(void *pvParameters)
 					}
 				}
 				//RELEASE THE SEMAPHORE
-				*/
+				
 				xSemaphoreGive(xCurrentOnLoadSemaphore);
 			} 
 		}
