@@ -137,8 +137,6 @@ TickType_t currentSystemTimeInTicks = 0;
 TickType_t timeAtServiceRequest = 0;
 TickType_t timeFirstLoadShed = 0;
 
-int currentIndex = 0;
-int IndexOfMostRecentMeasurement = 0;
 TickType_t responseTimes[5] = {0,0,0,0,0};
 
 /* Callback functions */
@@ -163,6 +161,7 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 		timeFirstLoadShed = xTaskGetTickCount();
 		responseTimes[0] = responseTimes[1];
 		responseTimes[1] = responseTimes[2];
+		responseTimes[2] = responseTimes[3];
 		responseTimes[3] = responseTimes[4];
 		responseTimes[4] = timeFirstLoadShed - timeAtServiceRequest;
 
@@ -768,6 +767,7 @@ static void loadControlTask2(void *pvParameters)
 						timeFirstLoadShed = xTaskGetTickCount();
 						responseTimes[0] = responseTimes[1];
 						responseTimes[1] = responseTimes[2];
+						responseTimes[2] = responseTimes[3];
 						responseTimes[3] = responseTimes[4];
 						responseTimes[4] = timeFirstLoadShed - timeAtServiceRequest;
 					}
