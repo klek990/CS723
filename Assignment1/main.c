@@ -470,7 +470,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 			currIsStable = !(receivedMessage.currentFreq < freqThreshold || receivedMessage.currentRoc > rocThreshold);
 			// printf("currIsStable: %d", currIsStable);
 			if(currentSystemState == NORMALSTATE){
-				//Instability is frist detected
+				//Instability is first detected
 
 				// Check if ROC is greater than ROC threshold, or if Frequency is below FREQ threshold
 				//if it is stable and not in the watching state then do nothing
@@ -861,7 +861,7 @@ static void loadControlTask2(void *pvParameters)
 						printf("Normal mode\n");
 					}
 					//stop the 500 ms timer
-					xTimerStop(xtimer500MS, 0);
+					//xTimerStop(xtimer500MS, 0);
 				}
 				//RELEASE THE SEMAPHORE
 				
@@ -1047,7 +1047,7 @@ int main(void)
 		printf("200 MS Timer not successfully created\n");
 	}
 
-	xtimer500MS = xTimerCreate("timer500MS", (pdMS_TO_TICKS(500)), pdTRUE, (void *)1, xTimer500MSCallback);
+	xtimer500MS = xTimerCreate("timer500MS", (pdMS_TO_TICKS(500)), pdFALSE, (void *)1, xTimer500MSCallback);
 	if (xtimer500MS == NULL)
 	{
 		printf("500 MS Timer not successfully created\n");
