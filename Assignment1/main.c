@@ -409,7 +409,7 @@ static void manageSystemStateTask(void *pvParameters)
 	while (1)
 	{
 		// Consume the value stored in the SystemStateQueue
-		if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 50/portTICK_PERIOD_MS) == pdPASS)
+		if (xQueueReceive(xSystemStateQueue, &(latestStateValue), 0) == pdPASS)
 		{
 			xSemaphoreTake(xSystemStateSemaphore, 0);
 			// Critical Section
@@ -461,7 +461,7 @@ static void checkSystemStabilityTask(void *pvParameters)
 	int systemStateUpdateValue;
 	while (1)
 	{
-		if (xQueueReceive(xSignalInfoQueue, &(receivedMessage), 50/portTICK_PERIOD_MS) == pdPASS)
+		if (xQueueReceive(xSignalInfoQueue, &(receivedMessage), 0) == pdPASS)
 		{
 			prevIsStable = currIsStable;
 			currIsStable = !(receivedMessage.currentFreq < freqThreshold || receivedMessage.currentRoc > rocThreshold);
@@ -852,7 +852,7 @@ static void loadControlTask2(void *pvParameters)
 
 				//Check to see if stability reached
 				if(currentAssignedLoads == 0b11111){
-					if (xQueueSend(xSystemStateQueue, &(localSystemState), 50/portTICK_PERIOD_MS) == pdPASS)
+					if (xQueueSend(xSystemStateQueue, &(localSystemState), 0) == pdPASS)
 					{
 						printf("Normal mode\n");
 					}
@@ -866,7 +866,7 @@ static void loadControlTask2(void *pvParameters)
 		}
 		else {
 			//Maintenance state
-			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50/portTICK_PERIOD_MS))
+			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 0))
 			{
 				xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 				bool requestedBitSet = false;
