@@ -134,6 +134,11 @@ int wholeValue = 0, decimalValue = 0;
 
 
 TickType_t currentSystemTimeInTicks = 0;
+TickType_t timeAtServiceRequest = 0;
+TickType_t timeFirstLoadShed = 0;
+
+int currentIndex = 0;
+TickType_t responseTimes[5] = {0,0,0,0,0};
 
 /* Callback functions */
 void xTimer200MSCallback(TimerHandle_t xTimer)
@@ -152,6 +157,14 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 		IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 		IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
 		printf("Load shed by timer");
+
+
+		timeFirstLoadShed = xTaskGetTickCount();
+		responseTimes[currentIndex] = timeFirstLoadShed - timeAtServiceRequest;
+		currentIndex++;
+		if(currentIndex > 4){
+			currentIndex = 0;
+		}
 
 		/* After first load is shed, start the 500ms timer */
 		xTimerStart(xtimer500MS, 0);
@@ -172,7 +185,7 @@ void xTimer500MSCallback(TimerHandle_t xTimer)
 		{
 			//Tell the loadControlQueue to decrement load
 			isStable = false;
-			if (xQueueSend(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
+			if (xQueueSend(xSystemStabilityQueue, &isStable, 0) == pdPASS)
 			{
 				printf("UNSTABLE loadcontrol queue FROM TIMER\n");
 
@@ -182,7 +195,7 @@ void xTimer500MSCallback(TimerHandle_t xTimer)
 		{
 			//Tell the loadControlQueue to increment load if the system is stable
 			isStable = true;
-			if (xQueueSend(xSystemStabilityQueue, &isStable, 50/portTICK_PERIOD_MS) == pdPASS)
+			if (xQueueSend(xSystemStabilityQueue, &isStable, 0) == pdPASS)
 			{
 				printf("STABLE loadcontrol queue FROM TIMER\n");
 
@@ -482,8 +495,8 @@ static void checkSystemStabilityTask(void *pvParameters)
 							xTimerStart(xtimer200MS, 0);
 							firstLoadShed = false;
 
-							//Start the response time timer
-							xTimerStart(xtimerResponse, 0);
+							//Start record the start time of response
+							timeAtServiceRequest = xTaskGetTickCount();
 						}
 					}
 				}
@@ -753,7 +766,12 @@ static void loadControlTask2(void *pvParameters)
 						xTimerStart(xtimer500MS, 0);
 
 						//Read the response time timer
-						responseTime = 
+						timeFirstLoadShed = xTaskGetTickCount();
+						responseTimes[currentIndex] = timeFirstLoadShed - timeAtServiceRequest;
+						currentIndex++;
+						if(currentIndex > 4){
+							currentIndex = 0;
+						}
 					}
 				}
 				//write to leds
