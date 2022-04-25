@@ -838,7 +838,7 @@ static void loadControlTask2(void *pvParameters)
 						
 						firstLoadShed = true;
 						xTimerStart(xtimer500MS, 0);
-						xTimerStop(xtimer200MS);
+						xTimerStop(xtimer200MS, 0);
 
 						//Read the response time timer
 						timeFirstLoadShed = xTaskGetTickCount();
