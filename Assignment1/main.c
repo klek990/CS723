@@ -623,66 +623,143 @@ void PRVGADraw_Task(void *pvParameters )
 			}
 
 			/* Buffers to hold values to print on VGA */
-			char load[20];
-			char systemStateBuffer[20];
-			char systemStabilityBuffer[20];
-			char VGARocBuffer[20];
-			char VGAFreqBuffer[20];
-			double VGARoc = rocThreshold;
-			double VGAFreq = freqThreshold;
-			
+			char load[20], systemStateBuffer[20], 
+				systemStabilityBuffer[20], VGARocBuffer[20],
+				VGAFreqBuffer[20], currentTimeBuffer[20],
+				time1Buffer[20], time2Buffer[20], time3Buffer[20],
+				time4Buffer[20], time5Buffer[20], maxTimeBuffer[20],
+				minTimeBuffer[20], avgTimeBuffer[20];
+
+			/* Local value to hold globals */
+			double VGARoc = rocThreshold, VGAFreq = freqThreshold;
+			int currentTime = currentSystemTimeInTicks;
+
+			int minTime = responseTimes[0], 
+				   maxTime = responseTimes[0], avgTime = 0;
+
+			/* Values go from most recent (pos 4) to least recent */
+			int time1 = responseTimes[4], time2 = responseTimes[3], 
+				time3 = responseTimes[2], time4 = responseTimes[1],
+				time5 = responseTimes[0];
+
 			/* Converting values from double to string */
 			snprintf(VGARocBuffer, 50, "%.2f", VGARoc);
 			snprintf(VGAFreqBuffer, 50, "%.2f", VGAFreq);
+			
 
+			/* Calcualate min, max, average */
+			for (int i = 0; i < 5; i++)
+			{
+				
+				avgTime += responseTimes[i];
+				if (responseTimes[i] < minTime)
+				{
+					minTime = responseTimes[i];
+				}
 
-			alt_up_char_buffer_string(char_buf, "Loads Connected: ", 4, 40);
-			alt_up_char_buffer_string(char_buf, itoa(currentAssignedLoads, load, 10), 21, 40);
+				if (maxTime < responseTimes[i])
+				{
+					maxTime = responseTimes[i];
+				}
+			}
+			avgTime /= 5;
+			snprintf(maxTimeBuffer, 20, "%d", maxTime);
+			snprintf(minTimeBuffer, 20, "%d", minTime);
+			snprintf(avgTimeBuffer, 20, "%d", avgTime);
+
+			snprintf(time1Buffer, 20, "%d", time1);
+			snprintf(time2Buffer, 20, "%d", time2);
+			snprintf(time3Buffer, 20, "%d", time3);
+			snprintf(time4Buffer, 20, "%d", time4);
+			snprintf(time5Buffer, 20, "%d", time5);
+			
+			
+
+			/* Show all info on VGA display*/
+			alt_up_char_buffer_string(char_buf, "Loads Connected: ", 0, 40);
+			alt_up_char_buffer_string(char_buf, itoa(currentAssignedLoads, load, 10), 17, 40);
 			if (currentAssignedLoads < 10)
 			{
-				alt_up_char_buffer_string(char_buf, " ", 22, 40);
+				alt_up_char_buffer_string(char_buf, " ", 18, 40);
 			}
 
-			alt_up_char_buffer_string(char_buf, "System State: ", 4, 42);
-			alt_up_char_buffer_string(char_buf, itoa(currentSystemState, systemStateBuffer, 10), 18, 42);
-			alt_up_char_buffer_string(char_buf, "0 = Norm  1 = Load  2 = Maint", 4, 44);
+			alt_up_char_buffer_string(char_buf, "System State: ", 0, 42);
+			alt_up_char_buffer_string(char_buf, itoa(currentSystemState, systemStateBuffer, 10), 14, 42);
+			alt_up_char_buffer_string(char_buf, "0 = Norm  1 = Load  2 = Maint", 0, 44);
 
-			alt_up_char_buffer_string(char_buf, "System Stability: ", 4, 48);
-			alt_up_char_buffer_string(char_buf, itoa(readStabiliyVGA, systemStabilityBuffer, 10), 22, 48);
-			alt_up_char_buffer_string(char_buf, "0 = Unstable  1 = Stable", 4, 50);
+			alt_up_char_buffer_string(char_buf, "Is Stable: ", 0, 46);
+			alt_up_char_buffer_string(char_buf, itoa(readStabiliyVGA, systemStabilityBuffer, 10), 11, 46);
 
-			alt_up_char_buffer_string(char_buf, "RoC Threshold: ", 4, 54);
-			alt_up_char_buffer_string(char_buf, VGARocBuffer, 19, 54);
+			alt_up_char_buffer_string(char_buf, "Freq Threshold: ", 0, 48);
+			alt_up_char_buffer_string(char_buf, VGAFreqBuffer, 16, 48);
+			alt_up_char_buffer_string(char_buf, "RoC Threshold: ", 0, 50);
+			alt_up_char_buffer_string(char_buf, VGARocBuffer, 15, 50);
 
-			alt_up_char_buffer_string(char_buf, "Freq Lower Threshold: ", 25, 54);
-			alt_up_char_buffer_string(char_buf, VGAFreqBuffer, 47, 54);
+			alt_up_char_buffer_string(char_buf, "Current Time (ms): ", 32, 40);
+			alt_up_char_buffer_string(char_buf, itoa(currentTime, currentTimeBuffer, 10), 51, 40);
 
+			alt_up_char_buffer_string(char_buf, "Max Time: ", 32, 42);
+			alt_up_char_buffer_string(char_buf, maxTimeBuffer, 42, 42);
+			alt_up_char_buffer_string(char_buf, "Min Time: ", 32, 44);
+			alt_up_char_buffer_string(char_buf, minTimeBuffer, 42, 44);
+			alt_up_char_buffer_string(char_buf, "Avg Time: ", 32, 46);
+			alt_up_char_buffer_string(char_buf, avgTimeBuffer, 42, 46);
+
+			alt_up_char_buffer_string(char_buf, "Latest Times: ", 60, 40);
+			alt_up_char_buffer_string(char_buf, time1Buffer, 60, 42);
+			alt_up_char_buffer_string(char_buf, time2Buffer, 60, 44);
+			alt_up_char_buffer_string(char_buf, time3Buffer, 60, 46);
+			alt_up_char_buffer_string(char_buf, time4Buffer, 60, 48);
+			alt_up_char_buffer_string(char_buf, time5Buffer, 60, 50);
+
+			/* Clearing display of times */
+			if (xTimer500Expired)
+			{
+				alt_up_char_buffer_string(char_buf, "         ", 60, 42);
+				alt_up_char_buffer_string(char_buf, "         ", 60, 44);
+				alt_up_char_buffer_string(char_buf, "         ", 60, 46);
+				alt_up_char_buffer_string(char_buf, "         ", 60, 48);
+				alt_up_char_buffer_string(char_buf, "         ", 60, 50);
+			}
+			
+		
 
 			if (recordFreq)
 			{
-				alt_up_char_buffer_string(char_buf, "Recording Freq", 40, 40);
+				alt_up_char_buffer_string(char_buf, "Recording Freq", 40, 56);
 				if (recordDecimalValues)
 				{
-					alt_up_char_buffer_string(char_buf, "Recording decimal", 40, 42);
+					alt_up_char_buffer_string(char_buf, "Recording decimal", 40, 58);
 				}
 				else if (!recordDecimalValues)
 				{
-					alt_up_char_buffer_string(char_buf, "Recording whole  ", 40, 42);
+					alt_up_char_buffer_string(char_buf, "Recording whole  ", 40, 58);
+				}
+				else
+				{
+					alt_up_char_buffer_string(char_buf, "                 ", 40, 58);
 				}
 			}
 			else if (recordRoc)
 			{
-				alt_up_char_buffer_string(char_buf, "Recording ROC ", 40, 40);
+				alt_up_char_buffer_string(char_buf, "Recording ROC ", 40, 56);
 				if (recordDecimalValues)
 				{
-					alt_up_char_buffer_string(char_buf, "Recording decimal", 40, 42);
+					alt_up_char_buffer_string(char_buf, "Recording decimal", 40, 58);
 				}
 				else if (!recordDecimalValues)
 				{
-					alt_up_char_buffer_string(char_buf, "Recording whole  ", 40, 42);
+					alt_up_char_buffer_string(char_buf, "Recording whole  ", 40, 58);
+				}
+				else
+				{
+					alt_up_char_buffer_string(char_buf, "                 ", 40, 58);
 				}
 			}
-			
+			else 
+			{
+				alt_up_char_buffer_string(char_buf, "              ", 40, 56);
+			}
 		}
 		vTaskDelay(10);
 
@@ -699,7 +776,6 @@ static void loadControlTask2(void *pvParameters)
 
 	IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 	IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
-
 
 	while (1)
 	{
@@ -963,7 +1039,7 @@ int main(void)
 		printf("xCurrentOnLoadSemaphore successfully created\n");
 	}
 
-	xtimer200MS = xTimerCreate("timer200MS", (pdMS_TO_TICKS(200)), pdFALSE, (void *)0, xTimer200MSCallback);
+	xtimer200MS = xTimerCreate("timer200MS", (pdMS_TO_TICKS(1)), pdFALSE, (void *)0, xTimer200MSCallback);
 	if (xtimer200MS == NULL)
 	{
 		printf("200 MS Timer not successfully created\n");
