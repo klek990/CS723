@@ -143,11 +143,12 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 {
 	//Test Statement
 	printf("TIMER 200 MS EXPIRED\n");
+	//TAKE THE SEMAPHORE
+	xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
 	/* If first load is not shed within 200ms, shed load manually */
 	if(!firstLoadShed)
 	{
-		//TAKE THE SEMAPHORE
-		xSemaphoreTake(xCurrentOnLoadSemaphore, 0);
+
 		//DO LOAD SHEDDING
 		currentAssignedLoads = currentAssignedLoads&(currentAssignedLoads - 1);
 
@@ -166,8 +167,8 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 
 		/* After first load is shed, start the 500ms timer */
 		xTimerStart(xtimer500MS, 0);
-		xSemaphoreGive(xCurrentOnLoadSemaphore);
 	}
+	xSemaphoreGive(xCurrentOnLoadSemaphore);
 	xTimerStop(xtimer200MS, 0);
 }
 
@@ -834,6 +835,7 @@ static void loadControlTask2(void *pvParameters)
 
 					//If the flag syaing it has been serviced hasnt been set, set it to true
 					if(!firstLoadShed){
+						
 						firstLoadShed = true;
 						xTimerStart(xtimer500MS, 0);
 						xTimerStop(xtimer200MS);
