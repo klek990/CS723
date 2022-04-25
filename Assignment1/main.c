@@ -135,8 +135,6 @@ int wholeValue = 0, decimalValue = 0;
 
 TickType_t currentSystemTimeInTicks = 0;
 TickType_t timeAtServiceRequest = 0;
-TickType_t timeFirstLoadShed = 0;
-
 TickType_t responseTimes[5] = {0,0,0,0,0};
 
 /* Callback functions */
@@ -158,7 +156,7 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 		printf("Load shed by timer");
 
 
-		timeFirstLoadShed = xTaskGetTickCount();
+		TickType_t timeFirstLoadShed = xTaskGetTickCount();
 		responseTimes[0] = responseTimes[1];
 		responseTimes[1] = responseTimes[2];
 		responseTimes[2] = responseTimes[3];
@@ -169,7 +167,7 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 		xTimerStart(xtimer500MS, 0);
 		xSemaphoreGive(xCurrentOnLoadSemaphore);
 	}
-	xTimerStop(xtimer200MS, 0);
+	//xTimerStop(xtimer200MS, 0);
 }
 
 void xTimer500MSCallback(TimerHandle_t xTimer)
@@ -772,7 +770,7 @@ static void loadControlTask2(void *pvParameters)
 	int localSystemState = NORMALSTATE;
 	struct switchInfoStruct receivedSwitchValue;
 	bool isStable = false;
-	int responseTime = 0;
+	TickType_t timeFirstLoadShed = 0;
 
 	IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 	IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
@@ -1039,7 +1037,7 @@ int main(void)
 		printf("xCurrentOnLoadSemaphore successfully created\n");
 	}
 
-	xtimer200MS = xTimerCreate("timer200MS", (pdMS_TO_TICKS(1)), pdFALSE, (void *)0, xTimer200MSCallback);
+	xtimer200MS = xTimerCreate("timer200MS", (pdMS_TO_TICKS(200)), pdFALSE, (void *)0, xTimer200MSCallback);
 	if (xtimer200MS == NULL)
 	{
 		printf("200 MS Timer not successfully created\n");
