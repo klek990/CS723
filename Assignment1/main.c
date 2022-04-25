@@ -165,6 +165,7 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 		responseTimes[3] = responseTimes[4];
 		responseTimes[4] = timeFirstLoadShed - timeAtServiceRequest;
 
+		firstLoadShed = true;
 		/* After first load is shed, start the 500ms timer */
 		xTimerStart(xtimer500MS, 0);
 	}
