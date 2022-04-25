@@ -161,12 +161,10 @@ void xTimer200MSCallback(TimerHandle_t xTimer)
 
 
 		timeFirstLoadShed = xTaskGetTickCount();
-		responseTimes[currentIndex] = timeFirstLoadShed - timeAtServiceRequest;
-		IndexOfMostRecentMeasurement = currentIndex;
-		currentIndex++;
-		if(currentIndex > 4){
-			currentIndex = 0;
-		}
+		responseTimes[0] = responseTimes[1];
+		responseTimes[1] = responseTimes[2];
+		responseTimes[3] = responseTimes[4];
+		responseTimes[4] = timeFirstLoadShed - timeAtServiceRequest;
 
 		/* After first load is shed, start the 500ms timer */
 		xTimerStart(xtimer500MS, 0);
@@ -768,12 +766,10 @@ static void loadControlTask2(void *pvParameters)
 
 						//Read the response time timer
 						timeFirstLoadShed = xTaskGetTickCount();
-						responseTimes[currentIndex] = timeFirstLoadShed - timeAtServiceRequest;
-						IndexOfMostRecentMeasurement = currentIndex;
-						currentIndex++;
-						if(currentIndex > 4){
-							currentIndex = 0;
-						}
+						responseTimes[0] = responseTimes[1];
+						responseTimes[1] = responseTimes[2];
+						responseTimes[3] = responseTimes[4];
+						responseTimes[4] = timeFirstLoadShed - timeAtServiceRequest;
 					}
 				}
 				//write to leds
