@@ -66,6 +66,8 @@ static QueueHandle_t xVGAFrequencyData;
 
 TimerHandle_t xtimer200MS;
 TimerHandle_t xtimer500MS;
+TimerHandle_t xtimerResponse;
+TimerHandle_t xtimerRuntime;
 
 /* Structures for received signal (freq, RoC, period) and which loads to shed */
 struct signalInfoStruct
@@ -132,6 +134,9 @@ bool recordDecimalValues = false;
 char freqThresholdBuffer[200], rocThresholdBuffer[200];
 int wholeValue = 0, decimalValue = 0;
 
+
+float currentSystemTime = 0;
+
 /* Callback functions */
 void xTimer200MSCallback(TimerHandle_t xTimer)
 {
@@ -188,6 +193,18 @@ void xTimer500MSCallback(TimerHandle_t xTimer)
 		xTimer500Expired = true;
 		readStabiliyVGA = isStable;
 	}
+}
+
+/* Callback functions */
+void xtimerRuntimeCallback(TimerHandle_t xTimer)
+{
+	currentSystemTime += 0.01;
+}
+
+/* Callback functions */
+void xTimerResponseCallback(TimerHandle_t xTimer)
+{
+
 }
 
 /* Read signal from onboard FAU and do calculations */
@@ -756,6 +773,8 @@ static void loadControlTask2(void *pvParameters)
 					{
 						printf("Normal mode\n");
 					}
+					//stop the 500 ms timer
+					xTimerStop(xtimer500MS, 0);
 				}
 				//RELEASE THE SEMAPHORE
 				
@@ -874,6 +893,43 @@ int main(void)
 		printf("SystemStateQueue Created Successfully\n");
 	}
 
+	if (xWallSwitchQueue == NULL)
+	{
+		printf("Unable to Create Integer xWallSwitchQueue\n");
+	}
+	else
+	{
+		printf("xWallSwitchQueue Created Successfully\n");
+	}
+
+	if (xSystemStabilityQueue == NULL)
+	{
+		printf("Unable to Create Integer xSystemStabilityQueue\n");
+	}
+	else
+	{
+		printf("xSystemStabilityQueue Created Successfully\n");
+	}
+
+	if (xSignalInfoQueue == NULL)
+	{
+		printf("Unable to Create Integer xSignalInfoQueue\n");
+	}
+	else
+	{
+		printf("xSignalInfoQueue Created Successfully\n");
+	}
+
+	if (xVGAFrequencyData == NULL)
+	{
+		printf("Unable to Create Integer xVGAFrequencyData\n");
+	}
+	else
+	{
+		printf("xVGAFrequencyData Created Successfully\n");
+	}
+
+
 	xSystemStateSemaphore = xSemaphoreCreateBinary();
 
 	if (xSystemStateSemaphore == NULL)
@@ -904,10 +960,22 @@ int main(void)
 		printf("200 MS Timer not successfully created\n");
 	}
 
-	xtimer500MS = xTimerCreate("timer500MS", (500 / portTICK_PERIOD_MS), pdFALSE, (void *)1, xTimer500MSCallback);
+	xtimer500MS = xTimerCreate("timer500MS", (500 / portTICK_PERIOD_MS), pdTRUE, (void *)1, xTimer500MSCallback);
 	if (xtimer500MS == NULL)
 	{
 		printf("500 MS Timer not successfully created\n");
+	}
+
+	xtimerRuntime = xTimerCreate("timerRuntime", (10 / portTICK_PERIOD_MS), pdFALSE, (void *)2, xtimerRuntimeCallback);
+	if (xtimerRuntime == NULL)
+	{
+		printf("Runtime Timer not successfully created\n");
+	}
+
+	xtimerResponse = xTimerCreate("timerResponse", (1000 / portTICK_PERIOD_MS), pdFALSE, (void *)3, xTimerResponseCallback);
+	if (xtimerResponse == NULL)
+	{
+		printf("Response Timer not successfully created\n");
 	}
 
 	/* Finally start the scheduler. */
