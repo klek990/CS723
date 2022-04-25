@@ -66,8 +66,6 @@ static QueueHandle_t xVGAFrequencyData;
 
 TimerHandle_t xtimer200MS;
 TimerHandle_t xtimer500MS;
-TimerHandle_t xtimerResponse;
-TimerHandle_t xtimerRuntime;
 
 /* Structures for received signal (freq, RoC, period) and which loads to shed */
 struct signalInfoStruct
@@ -135,7 +133,7 @@ char freqThresholdBuffer[200], rocThresholdBuffer[200];
 int wholeValue = 0, decimalValue = 0;
 
 
-float currentSystemTime = 0;
+TickType_t currentSystemTimeInTicks = 0;
 
 /* Callback functions */
 void xTimer200MSCallback(TimerHandle_t xTimer)
@@ -193,18 +191,6 @@ void xTimer500MSCallback(TimerHandle_t xTimer)
 		xTimer500Expired = true;
 		readStabiliyVGA = isStable;
 	}
-}
-
-/* Callback functions */
-void xtimerRuntimeCallback(TimerHandle_t xTimer)
-{
-	currentSystemTime += 0.01;
-}
-
-/* Callback functions */
-void xTimerResponseCallback(TimerHandle_t xTimer)
-{
-
 }
 
 /* Read signal from onboard FAU and do calculations */
@@ -495,6 +481,9 @@ static void checkSystemStabilityTask(void *pvParameters)
 							//Start the 200ms timer to show that first loadshedding must happen
 							xTimerStart(xtimer200MS, 0);
 							firstLoadShed = false;
+
+							//Start the response time timer
+							xTimerStart(xtimerResponse, 0);
 						}
 					}
 				}
@@ -565,7 +554,7 @@ void PRVGADraw_Task(void *pvParameters )
 
 
 	while(1){
-
+		currentSystemTimeInTicks = xTaskGetTickCount();
 		//receive frequency data from queue
 		while(uxQueueMessagesWaiting( xVGAFrequencyData ) != 0){
 			xQueueReceive( xVGAFrequencyData, freq+i, 0 );
@@ -695,6 +684,7 @@ static void loadControlTask2(void *pvParameters)
 	int localSystemState = NORMALSTATE;
 	struct switchInfoStruct receivedSwitchValue;
 	bool isStable = false;
+	int responseTime = 0;
 
 	IOWR_ALTERA_AVALON_PIO_DATA(RED_LEDS_BASE, currentAssignedLoads & 0b11111);
 	IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);
@@ -761,6 +751,9 @@ static void loadControlTask2(void *pvParameters)
 					if(!firstLoadShed){
 						firstLoadShed = true;
 						xTimerStart(xtimer500MS, 0);
+
+						//Read the response time timer
+						responseTime = 
 					}
 				}
 				//write to leds
@@ -954,28 +947,16 @@ int main(void)
 		printf("xCurrentOnLoadSemaphore successfully created\n");
 	}
 
-	xtimer200MS = xTimerCreate("timer200MS", (200 / portTICK_PERIOD_MS), pdFALSE, (void *)0, xTimer200MSCallback);
+	xtimer200MS = xTimerCreate("timer200MS", (pdMS_TO_TICKS(200)), pdFALSE, (void *)0, xTimer200MSCallback);
 	if (xtimer200MS == NULL)
 	{
 		printf("200 MS Timer not successfully created\n");
 	}
 
-	xtimer500MS = xTimerCreate("timer500MS", (500 / portTICK_PERIOD_MS), pdTRUE, (void *)1, xTimer500MSCallback);
+	xtimer500MS = xTimerCreate("timer500MS", (pdMS_TO_TICKS(500)), pdTRUE, (void *)1, xTimer500MSCallback);
 	if (xtimer500MS == NULL)
 	{
 		printf("500 MS Timer not successfully created\n");
-	}
-
-	xtimerRuntime = xTimerCreate("timerRuntime", (10 / portTICK_PERIOD_MS), pdFALSE, (void *)2, xtimerRuntimeCallback);
-	if (xtimerRuntime == NULL)
-	{
-		printf("Runtime Timer not successfully created\n");
-	}
-
-	xtimerResponse = xTimerCreate("timerResponse", (1000 / portTICK_PERIOD_MS), pdFALSE, (void *)3, xTimerResponseCallback);
-	if (xtimerResponse == NULL)
-	{
-		printf("Response Timer not successfully created\n");
 	}
 
 	/* Finally start the scheduler. */
