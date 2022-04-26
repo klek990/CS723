@@ -244,19 +244,16 @@ static void readKeyboardISR(void *context, alt_u32 id)
 		switch (decode_mode)
 		{
 		case KB_ASCII_MAKE_CODE:
-			printf("ascii: %c\n\n", ascii);
 			/* If keyboard == F, start recording frequency threshold */
 			if (ascii == 'F' && !recordFreq)
 			{
 				recordFreq = true;
-				printf("RECORDING FREQUENCY\n\n\n\n");
 				break;
 			}
 			/* Else if keyboard == R, start recording ROC threshold */
 			else if (ascii == 'R' && !recordRoc)
 			{
 				recordRoc = true;
-				printf("RECORDING ROC\n\n\n\n");
 				break;
 			}
 
@@ -267,7 +264,6 @@ static void readKeyboardISR(void *context, alt_u32 id)
 
 				/* Empty buffer and start recording decimal value */
 				memset(freqThresholdBuffer, 0, sizeof(freqThresholdBuffer));
-				printf("Now enter digits after decimal.\n\n");
 				recordDecimalValues = true;
 
 				break;
@@ -276,10 +272,7 @@ static void readKeyboardISR(void *context, alt_u32 id)
 			else if (ascii == 'R' && recordRoc)
 			{
 				wholeValue = atoi(rocThresholdBuffer, NULL);
-
 				memset(rocThresholdBuffer, 0, sizeof(rocThresholdBuffer));
-				printf("Now enter digits after decimal.\n\n");
-				printf("Current whole value: %d\n", wholeValue);
 
 				recordDecimalValues = true;
 				break;
@@ -295,7 +288,6 @@ static void readKeyboardISR(void *context, alt_u32 id)
 				recordFreq = false;
 
 				freqThreshold = (double)(wholeValue + decimalValue / (double)100);
-				printf("Combined value for Freq: %f\n\n\n\n", freqThreshold);
 				break;
 			}
 			/* Stop recording decimal value if pressed for ROC */
@@ -308,7 +300,6 @@ static void readKeyboardISR(void *context, alt_u32 id)
 				recordRoc = false;
 
 				rocThreshold = (double)(wholeValue + decimalValue / (float)100);
-				printf("Combined value for ROC: %f\n\n\n", rocThreshold);
 				break;
 			}
 
@@ -316,12 +307,10 @@ static void readKeyboardISR(void *context, alt_u32 id)
 			if (recordFreq)
 			{
 				strncat(freqThresholdBuffer, &ascii, 1);
-				printf("Started recording. Frequency String in Buffer: %s\n\n", freqThresholdBuffer);
 			}
 			else if (recordRoc)
 			{
 				strncat(rocThresholdBuffer, &ascii, 1);
-				printf("Started recording. ROC String in Buffer: %s\n\n", rocThresholdBuffer);
 			}
 
 			break;
@@ -345,7 +334,7 @@ static void maintenanceStateISR(void *context)
 	int passToQueue = MAINTENANCESTATE;
 	if (xQueueSendFromISR(xSystemStateQueue, &passToQueue, NULL) == pdPASS)
 	{
-		printf("\nMaintenance State sucessfully sent to SystemStateQueue\n");
+
 	}
 
 	// Clear edge capture register
