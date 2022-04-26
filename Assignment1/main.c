@@ -618,7 +618,7 @@ void PRVGADraw_Task(void *pvParameters)
 			}
 
 			/* Buffers to hold values to print on VGA */
-			char load[20], systemStateBuffer[20],
+			char load[20],
 				systemStabilityBuffer[20], VGARocBuffer[20],
 				VGAFreqBuffer[20], currentTimeBuffer[20],
 				time1Buffer[20], time2Buffer[20], time3Buffer[20],
@@ -671,13 +671,11 @@ void PRVGADraw_Task(void *pvParameters)
 
 			loads = intToBinary(currentAssignedLoads);
 
+
 			/* Show all info on VGA display*/
 			alt_up_char_buffer_string(char_buf, "Loads Connected: ", 0, 40);
 			alt_up_char_buffer_string(char_buf, itoa(loads, load, 10), 17, 40);
-			if (currentAssignedLoads < 10)
-			{
-				alt_up_char_buffer_string(char_buf, " ", 18, 40);
-			}
+
 
 			alt_up_char_buffer_string(char_buf, "System State: ", 0, 42);
 			if (currentSystemState == 0)
@@ -734,15 +732,10 @@ void PRVGADraw_Task(void *pvParameters)
 				if (recordDecimalValues)
 				{
 					alt_up_char_buffer_string(char_buf, "Recording decimal", 40, 58);
-					alt_up_char_buffer_string(char_buf, "                 ", 40, 58);
 				}
 				else if (!recordDecimalValues)
 				{
 					alt_up_char_buffer_string(char_buf, "Recording whole  ", 40, 58);
-				}
-				else
-				{
-					alt_up_char_buffer_string(char_buf, "                 ", 40, 58);
 				}
 			}
 			else if (recordRoc)
@@ -751,20 +744,16 @@ void PRVGADraw_Task(void *pvParameters)
 				if (recordDecimalValues)
 				{
 					alt_up_char_buffer_string(char_buf, "Recording decimal", 40, 58);
-					alt_up_char_buffer_string(char_buf, "                 ", 40, 58);
 				}
 				else if (!recordDecimalValues)
 				{
 					alt_up_char_buffer_string(char_buf, "Recording whole  ", 40, 58);
 				}
-				else
-				{
-					alt_up_char_buffer_string(char_buf, "                 ", 40, 58);
-				}
 			}
 			else
 			{
 				alt_up_char_buffer_string(char_buf, "              ", 40, 56);
+				alt_up_char_buffer_string(char_buf, "                 ", 40, 58);
 			}
 		}
 		vTaskDelay(10);
