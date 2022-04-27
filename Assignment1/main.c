@@ -426,6 +426,10 @@ static void manageSystemStateTask(void *pvParameters)
 				{
 					// Normal Operation
 					currentSystemState = latestStateValue;
+					if (latestStateValue == NORMALSTATE)
+					{
+						xTimerStop(xtimer500MS, 0);
+					}
 				}
 			}
 			else
@@ -439,6 +443,7 @@ static void manageSystemStateTask(void *pvParameters)
 					{
 						/* Set system to normal if all switches on when exiting maintenance */
 						currentSystemState = NORMALSTATE;
+						xTimerStop(xtimer500MS, 0);
 					}
 					else 
 					{

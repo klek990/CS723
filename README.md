@@ -1,4 +1,4 @@
-# CS723
+# CS723 Frequency relay instructions
  
 1. Program the DE2-115 using the Quartus Programmer with the provided freq_relay_controller.sof file. This will initialise the components of the board to be interacted with using NiOS.
 2. Connect your power, PS2 keyboard, VGA, and USB to the board.
