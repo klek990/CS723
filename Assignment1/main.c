@@ -181,7 +181,7 @@ void xTimer500MSCallback(TimerHandle_t xTimer)
 	{
 		bool isStable = false;
 		// Test Statement
-		printf("TIMER 500 MS EXPIRED\n");
+		printf("TIMER 500 MS EXPIRED %d\n", currIsStable);
 		if (!currIsStable)
 		{
 			// Tell the loadControlQueue to decrement load
@@ -434,9 +434,19 @@ static void manageSystemStateTask(void *pvParameters)
 				// Maintenance State stops load management, there
 				if (latestStateValue == MAINTENANCESTATE)
 				{
-					// Restore the system to what it was before
-					currentSystemState = prevStateBeforeMaintenance;
+					
+					if (currentAssignedLoads == 0b11111)
+					{
+						/* Set system to normal if all switches on when exiting maintenance */
+						currentSystemState = NORMALSTATE;
+					}
+					else 
+					{
+						// Restore the system to what it was before
+						currentSystemState = prevStateBeforeMaintenance;
+					}
 					maintenanceActivated = false;
+					IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, ~currentAssignedLoads & 0b11111);	
 				}
 			}
 
@@ -581,9 +591,9 @@ void PRVGADraw_Task(void *pvParameters)
 				}
 			}
 
-			if (dfreq[i] > 100.0)
+			if (dfreq[i] >= 25)
 			{
-				dfreq[i] = 100.0;
+				dfreq[i] = 23;
 			}
 
 			i = ++i % 100; // point to the next data (oldest) to be overwritten
@@ -638,6 +648,7 @@ void PRVGADraw_Task(void *pvParameters)
 				time5 = responseTimes[0];
 			
 			int loads = 0;
+			int nonZeros = 0;
 
 			/* Converting values from double to string */
 			snprintf(VGARocBuffer, 50, "%.2f", VGARoc);
@@ -646,8 +657,13 @@ void PRVGADraw_Task(void *pvParameters)
 			/* Calcualate min, max, average */
 			for (int i = 0; i < 5; i++)
 			{
-
-				avgTime += responseTimes[i];
+				
+				if (responseTimes[i] != 0)
+				{
+					avgTime += responseTimes[i];
+					nonZeros++;
+				}
+				
 				if (responseTimes[i] < minTime)
 				{
 					minTime = responseTimes[i];
@@ -658,8 +674,13 @@ void PRVGADraw_Task(void *pvParameters)
 					maxTime = responseTimes[i];
 				}
 			}
-			avgTime /= 5;
+			avgTime /= nonZeros;
+
 			snprintf(maxTimeBuffer, 20, "%d", maxTime);
+			if (minTime == 0)
+			{
+				minTime = maxTime;
+			}
 			snprintf(minTimeBuffer, 20, "%d", minTime);
 			snprintf(avgTimeBuffer, 20, "%d", avgTime);
 
@@ -705,7 +726,9 @@ void PRVGADraw_Task(void *pvParameters)
 			alt_up_char_buffer_string(char_buf, "Max Time (ms): ", 32, 42);
 			alt_up_char_buffer_string(char_buf, maxTimeBuffer, 47, 42);
 			alt_up_char_buffer_string(char_buf, "Min Time (ms): ", 32, 44);
+			
 			alt_up_char_buffer_string(char_buf, minTimeBuffer, 47, 44);
+			
 			alt_up_char_buffer_string(char_buf, "Avg Time (ms): ", 32, 46);
 			alt_up_char_buffer_string(char_buf, avgTimeBuffer, 47, 46);
 
@@ -865,7 +888,7 @@ static void loadControlTask2(void *pvParameters)
 						printf("Normal mode\n");
 					}
 					// stop the 500 ms timer
-					// xTimerStop(xtimer500MS, 0);
+					xTimerStop(xtimer500MS, 0);
 				}
 				// RELEASE THE SEMAPHORE
 
@@ -874,6 +897,7 @@ static void loadControlTask2(void *pvParameters)
 		}
 		else
 		{
+			IOWR_ALTERA_AVALON_PIO_DATA(GREEN_LEDS_BASE, 0b00000);
 			// Maintenance state
 			if (xQueueReceive(xWallSwitchQueue, &receivedSwitchValue, 50 / portTICK_PERIOD_MS))
 			{
@@ -1049,7 +1073,7 @@ int main(void)
 		printf("200 MS Timer not successfully created\n");
 	}
 
-	xtimer500MS = xTimerCreate("timer500MS", (pdMS_TO_TICKS(500)), pdFALSE, (void *)1, xTimer500MSCallback);
+	xtimer500MS = xTimerCreate("timer500MS", (pdMS_TO_TICKS(500)), pdTRUE, (void *)1, xTimer500MSCallback);
 	if (xtimer500MS == NULL)
 	{
 		printf("500 MS Timer not successfully created\n");
