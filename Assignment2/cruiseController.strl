@@ -51,7 +51,76 @@ output CRUISE_STATE : cruiseState;
 %%Brake Pressed and AccelPressed cannot be high at the same time
 relation brakePressed # accelPressed;
 
+emit ? CRUISE_STATE <= OFF
+loop
+%INITIAL CONDITION
+trap T1 in
+var state := 1 : integer in
+loop
+    pause;
+    trap T2 in 
+            
+            [if on then
+                state = 1;
+                exit T2;
+            end if;
+            ||
+            if off then
+                state = 2;
+                exit T2;
+            end if
+            ||
+            if brakePressed then
+                state = 4;
+                exit T2;
+            end if];            
 
+            %OFF STATE
+            if state = 1 then
+                emit ? CRUISE_STATE <= OFF;
+                exit T2; 
+            end if;
+
+            % ON STATE
+            if state = 2 then
+                emit ? CRUISE_STATE <= ON;
+                if pre(?speedInRange) or (not pre(?accelPressed)) then
+                    state := 3; exit T2;
+                end if;
+
+                if pre(?speedInRange) and (not pre(?accelPressed)) then
+                    state := 2; exit T2;
+                end if;
+                exit T2;
+            end if;
+
+            % DISABLE STATE
+            if state = 3 then
+                emit ? CRUISE_STATE <= DISABLE;
+                if pre(?speedInRange) and (not (pre(?accelPressed))) then
+                    state := 2; exit T2;
+                end if;
+                exit T2;
+            end if;
+
+            % STANDBY STATE
+            if state = 4 then
+                emit ? CRUISE_STATE <= STDBY;
+                if(pre(?resume) and not accelPressed and speedInRange) then
+                    state := 2; exit T2;
+                end if;
+
+                if(pre(?resume) and (accelPressed or not speedInRange)) then
+                    state := 2; exit T2;
+                end if;
+                exit T2;
+            end if;
+     end trap
+end loop
+end var
+end trap
+end loop
+end module
 end;
 
 % Car Driving Control (Krishen)
