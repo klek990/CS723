@@ -1,4 +1,32 @@
+% pedal detection (Krithik)
+module PedalDetection:
+	input brake : double;
+	input accel : double;
+	input pedalsMin := 0.03 : double;
+	output accelPressed : boolean;
+	output brakePressed : boolean;
 
+	loop
+		pause;
+			% Emit if pedal pressed enough
+			if (?accel >= 0.03) then
+				emit accelPressed(true)
+			elsif (?brake >= 0.03) then
+				emit brakePressed(true)
+			end if;
+
+			% Reset accelPressed/brakePressed when input low
+			if (?accel < 0.03) then
+				emit accelPressed(false)
+			end if;
+
+			if (?brake < 0.03) then
+				emit brakePressed(false)
+			end if;
+	end loop
+
+
+end module
 % Procedures
 
 % Interface declarations
