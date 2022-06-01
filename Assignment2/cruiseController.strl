@@ -27,6 +27,17 @@
 
 % Cruise Speed Management (Krithik)
 
+module SpeedManagement:
+output cruiseSpeed : double; 
+
+loop
+	pause;
+		emit cruiseSpeed(2.0);
+
+end loop
+
+end module
+
 
 
 
@@ -104,7 +115,7 @@ end module
 module cruiseController:
 
 	% Visible inputs/outputs StateController
-	input on1 : boolean, off1 : boolean, resume1 : boolean, set1 : boolean;
+	input on1 := false : boolean, off1 := false : boolean, resume1 := false : boolean, set1 := false : boolean;
 	input quickAccel : boolean, quickDecel : boolean;
 	input accel1 := 0.0 : double, brake1 := 0.0 : double, speed1 := 0.0 : double;
 
@@ -112,8 +123,8 @@ module cruiseController:
 	% for use in other modules though so I'm leaving it as it is for now because it works.
 	% input accelPressed1 : boolean, brakePressed1 : boolean;
 	
-	output cruiseSpeed : double;
-	output throttleCmd : double;
+	output cruiseSpeed1 := 0.0 : double;
+	output throttleCmd1 := 0.0 : double;
 	output cruiseState1 := 0 : integer;
 
 
@@ -143,6 +154,13 @@ module cruiseController:
 		% signal brakePressed1/brakePressed;
 		% signal accelPressed1/accelPressed;
 		signal speed1/speed
+	]
+
+	||
+
+	run SpeedManagement
+	[
+		signal cruiseSpeed1/cruiseSpeed
 	]
 
 end module
