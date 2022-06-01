@@ -1,29 +1,29 @@
 % pedal detection (Krithik)
-module PedalDetection:
-	input accel : double, brake : double;
-	output accelPressed : boolean, brakePressed : boolean;
+% module PedalDetection:
+% 	input accel : double, brake : double;
+% 	output accelPressed : boolean, brakePressed : boolean;
 
-	var pedalsMin := 0.03 : double in
-		loop
-			pause;
-				% Emit if pedal pressed enough
-				if (?accel >= 0.03) then
-					emit accelPressed(true)
-				elsif (?brake >= 0.03) then
-					emit brakePressed(true)
-				end if;
+% 	var pedalsMin := 0.03 : double in
+% 		loop
+% 			pause;
+% 				% Emit if pedal pressed enough
+% 				if (?accel >= 0.03) then
+% 					emit accelPressed(true)
+% 				elsif (?brake >= 0.03) then
+% 					emit brakePressed(true)
+% 				end if;
 
-				% Reset accelPressed/brakePressed when input low
-				if (?accel < 0.03) then
-					emit accelPressed(false)
-				end if;
+% 				% Reset accelPressed/brakePressed when input low
+% 				if (?accel < 0.03) then
+% 					emit accelPressed(false)
+% 				end if;
 
-				if (?brake < 0.03) then
-					emit brakePressed(false)
-				end if;
-		end loop
-	end var
-end module
+% 				if (?brake < 0.03) then
+% 					emit brakePressed(false)
+% 				end if;
+% 		end loop
+% 	end var
+% end module
 
 % Cruise Speed Management (Krithik)
 
@@ -33,8 +33,9 @@ end module
 % Cruise state management module, handles state transitions (Krishen)
 module StateController:
 	input on: boolean, off : boolean, resume : boolean;
-	input accelPressed : boolean, brakePressed : boolean; 
-	input speed := 50.0 : double;
+	% input accelPressed : boolean, brakePressed : boolean; 
+	input speed := 0.0 : double;
+	input accel : double, brake : double;
 
 	% Cruise State:
 	% 	0 = OFF
@@ -44,19 +45,52 @@ module StateController:
 	output cruiseState : integer;
 
 	% Brake Pressed and AccelPressed cannot be high at the same time
-	relation brakePressed # accelPressed;
+	% relation brakePressed # accelPressed;
 
-	var speedInRange : boolean in
-	loop	
+	var currentState := 0 : integer, speedMin := 30.0 : double, speedInRange : boolean, speedMax := 150.0 : double in
+	var accelPressed : boolean, brakePressed : boolean in
+	loop
 		pause;
-		var speedMin := 30.0 : double, speedMax := 150.0 : double in
+		speedInRange := ?speed >= speedMin and ?speed <= speedMax;
+		accelPressed := (?accel >= 0.03);
+		brakePressed := (?brake >= 0.03);
+		
+		% Move to OFF when off pressed (priority)
+		if (?off) then 
+			currentState := 0;
 
 		%  Output ON when on button pressed, accelerator not pressed, and speed in range
-		if (?on and (?accelPressed = false) and ?speed >= speedMin and ?speed <= speedMax) then
-			emit cruiseState(1) 
+		elsif (?on or (currentState = 1 and not(accelPressed) and speedInRange)) then
+			currentState := 1;
+
+		% Move from ON to DISABLE when accelPressed = false and speed isnt in bounds
+		elsif (currentState = 1 and (accelPressed or not(speedInRange))) then
+			currentState := 3;
 		end if;
-		end var
+
+		% Move from STDBY to ON when resume pressed, acelerator not pressed, and speed in range
+		if (currentState = 2 and ?resume and not(accelPressed) and speedInRange) then
+			currentState := 1;
+
+		% Move from STDBY to DISABLE when resume and (accelerator pressed or speed not in range)
+		elsif (currentState = 2 and ?resume and (accelPressed or not(speedInRange))) then
+			currentState := 3;
+		end if;
+			
+		% Move to STDBY if the brake is pressed (priority)
+		if (brakePressed) then
+			currentState := 2;
+		end if;
+
+		% Move from DISABLE to ON if accelerator not pressed and speed in range
+		if (currentState = 3 and not(accelPressed) and speedInRange) then
+			currentState := 1;
+		end if;
+
+		emit cruiseState(currentState);
+		
 	end loop
+	end var
 	end var
 end module
 
@@ -68,36 +102,38 @@ end module
 module cruiseController:
 
 	% Visible inputs/outputs StateController
-	input on1: boolean, off1 : boolean, resume1 : boolean, set1 : boolean;
+	input on1 : boolean, off1 : boolean, resume1 : boolean, set1 : boolean;
 	input quickAccel : boolean, quickDecel : boolean;
-	input accel1 : double, brake1 : double, speed1 : double;
+	input accel1 := 0.0 : double, brake1 := 0.0 : double, speed1 := 0.0 : double;
 
 	% accelPressed and brakePressed cant be inputs to the system, idk how else to export them
 	% for use in other modules though so I'm leaving it as it is for now because it works.
-	input accelPressed1 : boolean, brakePressed1 : boolean;
+	% input accelPressed1 : boolean, brakePressed1 : boolean;
 	
 	output cruiseSpeed : double;
 	output throttleCmd : double;
 	output cruiseState1 := 0 : integer;
 
-	run PedalDetection 
-	[
-		signal brake1/brake;
-		signal accel1/accel;
-		signal accelPressed1/accelPressed;
-		signal brakePressed1/brakePressed
-	]
+	% run PedalDetection 
+	% [
+	% 	signal brake1/brake;
+	% 	signal accel1/accel;
+	% 	signal accelPressed1/accelPressed;
+	% 	signal brakePressed1/brakePressed
+	% ]
 	
-	||
+	% ||
 
 	run StateController 
 	[
+		signal accel1/accel;
+		signal brake1/brake;
 		signal cruiseState1/cruiseState;
 		signal on1/on;
 		signal off1/off;
 		signal resume1/resume;
-		signal brakePressed1/brakePressed;
-		signal accelPressed1/accelPressed;
+		% signal brakePressed1/brakePressed;
+		% signal accelPressed1/accelPressed;
 		signal speed1/speed
 	]
 
