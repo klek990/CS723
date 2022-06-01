@@ -1,10 +1,7 @@
 % pedal detection (Krithik)
 module PedalDetection:
-	input brake : double;
-	input accel : double;
-	
-	output accelPressed : boolean;
-	output brakePressed : boolean;
+	input accel : double, brake : double;
+	output accelPressed : boolean, brakePressed : boolean;
 
 	var pedalsMin := 0.03 : double in
 		loop
@@ -28,12 +25,6 @@ module PedalDetection:
 	end var
 
 end module
-% Procedures
-
-% Interface declarations
-
-
-% pedal detection (Krithik)
 
 % Cruise Speed Management (Krithik)
 
@@ -41,23 +32,17 @@ end module
 % Cruise State Management (Krishen)
 
 
-%%Defined enum
+% State controller module, handles state transitions
 module StateController:
-
-	%Input and Output Definition
-	% Cruise State:
-		% 0 = OFF
-		% 1 = ON
-		% 2 = STDBY
-		% 3 = DISABLE
-	
-	% Speed in range = speedMin < speed < speedMax
-	input off : boolean;
-	input on : boolean;
-	input resume : boolean;
-	input brakePressed : boolean;
-	input accelPressed : boolean;
+	input on: boolean, off : boolean, resume : boolean;
+	input accelPressed : boolean, brakePressed : boolean;
 	input speed := 50.0 : double;
+
+	% Cruise State:
+	% 	0 = OFF
+	% 	1 = ON
+	% 	2 = STDBY
+	% 	3 = DISABLE
 	output cruiseState : integer;
 
 	% Brake Pressed and AccelPressed cannot be high at the same time
@@ -68,36 +53,30 @@ module StateController:
 		pause;
 		var speedMin := 30.0 : double, speedMax := 150.0 : double in
 
-		% IDK the AND operator so youll have to try find that
+		%  Check speed is within the correct range
 		if (?speed >= speedMin and ?speed <= speedMax) then
-			emit cruiseState(1)
+			emit cruiseState(1) % THIS IS A TESTING PLACEHOLDER EMIT
 		end if;
 		end var
 	end loop
 	end var
-
-	
-	
-
-
 end module
 
 % Car Driving Control (Krishen)
 
+
+
 % Toplevel module running
 module cruiseController:
 
-% Visible outputs StateController
-output cruiseState1 := 0 : integer;
-output accelPresseed1 : boolean;
-output brakePressed1 : boolean;
-output cruiseSpeed : double;
-input speed1 : double;
-input on1  : boolean;
-input off1 : boolean;
-input resume1 : boolean;
-input accel1 : double;
-input brake1 : double;
+	% Visible inputs/outputs StateController
+	input on1: boolean, off1 : boolean, resume1 : boolean;
+	input speed1 : double, accel1 : double, brake1 : double;
+
+	output cruiseState1 := 0 : integer;
+	output accelPresseed1 : boolean, brakePressed1 : boolean;
+	output cruiseSpeed : double;
+
 
 
 	run PedalDetection 
