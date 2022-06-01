@@ -2,29 +2,30 @@
 module PedalDetection:
 	input brake : double;
 	input accel : double;
-	input pedalsMin := 0.03 : double;
+	
 	output accelPressed : boolean;
 	output brakePressed : boolean;
 
-	loop
-		pause;
-			% Emit if pedal pressed enough
-			if (?accel >= 0.03) then
-				emit accelPressed(true)
-			elsif (?brake >= 0.03) then
-				emit brakePressed(true)
-			end if;
+	var pedalsMin := 0.03 : double in
+		loop
+			pause;
+				% Emit if pedal pressed enough
+				if (?accel >= 0.03) then
+					emit accelPressed(true)
+				elsif (?brake >= 0.03) then
+					emit brakePressed(true)
+				end if;
 
-			% Reset accelPressed/brakePressed when input low
-			if (?accel < 0.03) then
-				emit accelPressed(false)
-			end if;
+				% Reset accelPressed/brakePressed when input low
+				if (?accel < 0.03) then
+					emit accelPressed(false)
+				end if;
 
-			if (?brake < 0.03) then
-				emit brakePressed(false)
-			end if;
-	end loop
-
+				if (?brake < 0.03) then
+					emit brakePressed(false)
+				end if;
+		end loop
+	end var
 
 end module
 % Procedures
@@ -41,87 +42,84 @@ end module
 
 
 %%Defined enum
-type cruiseState = enum {ON, OFF, STDBY, DISABLE};
 module StateController:
 
-%Input and Output Definition
-input on, off, resume, speedInRange, brakePressed, accelPressed;
-output CRUISE_STATE : cruiseState;
+	%Input and Output Definition
+	% Cruise State:
+		% 0 = OFF
+		% 1 = ON
+		% 2 = STDBY
+		% 3 = DISABLE
+	
+	% Speed in range = speedMin < speed < speedMax
+	input off : boolean;
+	input on : boolean;
+	input resume : boolean;
+	input brakePressed : boolean;
+	input accelPressed : boolean;
+	input speed := 50.0 : double;
+	output cruiseState : integer;
 
-%%Brake Pressed and AccelPressed cannot be high at the same time
-relation brakePressed # accelPressed;
+	% Brake Pressed and AccelPressed cannot be high at the same time
+	relation brakePressed # accelPressed;
 
-emit ? CRUISE_STATE <= OFF
-loop
-%INITIAL CONDITION
-trap T1 in
-var state := 1 : integer in
-loop
-    pause;
-    trap T2 in 
-            
-            [if on then
-                state = 1;
-                exit T2;
-            end if;
-            ||
-            if off then
-                state = 2;
-                exit T2;
-            end if
-            ||
-            if brakePressed then
-                state = 4;
-                exit T2;
-            end if];            
+	var speedInRange : boolean in
+	loop	
+		pause;
+		var speedMin := 30.0 : double, speedMax := 150.0 : double in
 
-            %OFF STATE
-            if state = 1 then
-                emit ? CRUISE_STATE <= OFF;
-                exit T2; 
-            end if;
+		% IDK the AND operator so youll have to try find that
+		if (?speed >= speedMin and ?speed <= speedMax) then
+			emit cruiseState(1)
+		end if;
+		end var
+	end loop
+	end var
 
-            % ON STATE
-            if state = 2 then
-                emit ? CRUISE_STATE <= ON;
-                if pre(?speedInRange) or (not pre(?accelPressed)) then
-                    state := 3; exit T2;
-                end if;
+	
+	
 
-                if pre(?speedInRange) and (not pre(?accelPressed)) then
-                    state := 2; exit T2;
-                end if;
-                exit T2;
-            end if;
 
-            % DISABLE STATE
-            if state = 3 then
-                emit ? CRUISE_STATE <= DISABLE;
-                if pre(?speedInRange) and (not (pre(?accelPressed))) then
-                    state := 2; exit T2;
-                end if;
-                exit T2;
-            end if;
-
-            % STANDBY STATE
-            if state = 4 then
-                emit ? CRUISE_STATE <= STDBY;
-                if(pre(?resume) and not accelPressed and speedInRange) then
-                    state := 2; exit T2;
-                end if;
-
-                if(pre(?resume) and (accelPressed or not speedInRange)) then
-                    state := 2; exit T2;
-                end if;
-                exit T2;
-            end if;
-     end trap
-end loop
-end var
-end trap
-end loop
 end module
-end;
 
 % Car Driving Control (Krishen)
+
+% Toplevel module running
+module cruiseController:
+
+% Visible outputs StateController
+output cruiseState1 := 0 : integer;
+output accelPresseed1 : boolean;
+output brakePressed1 : boolean;
+output cruiseSpeed : double;
+input speed1 : double;
+input on1  : boolean;
+input off1 : boolean;
+input resume1 : boolean;
+input accel1 : double;
+input brake1 : double;
+
+
+	run PedalDetection 
+	[
+		signal brake1/brake;
+		signal accel1/accel;
+		signal accelPresseed1/accelPressed;
+		signal brakePressed1/brakePressed
+	]
+	
+	||
+
+	run StateController 
+	[
+		signal cruiseState1/cruiseState;
+		signal on1/on;
+		signal off1/off;
+		signal resume1/resume;
+		signal brakePressed1/brakePressed;
+		signal accelPresseed1/accelPressed;
+		signal speed1/speed
+	]
+
+end module
 
