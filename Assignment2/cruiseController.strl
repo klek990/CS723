@@ -53,9 +53,9 @@ module StateController:
 		pause;
 		var speedMin := 30.0 : double, speedMax := 150.0 : double in
 
-		%  Check speed is within the correct range
-		if (?speed >= speedMin and ?speed <= speedMax) then
-			emit cruiseState(1) % THIS IS A TESTING PLACEHOLDER EMIT
+		%  Output ON when on button pressed, accelerator not pressed, and speed in range
+		if (?on and (?accelPressed = false) and ?speed >= speedMin and ?speed <= speedMax) then
+			emit cruiseState(1) 
 		end if;
 		end var
 	end loop
@@ -70,20 +70,20 @@ end module
 module cruiseController:
 
 	% Visible inputs/outputs StateController
-	input on1: boolean, off1 : boolean, resume1 : boolean;
-	input speed1 : double, accel1 : double, brake1 : double;
-
-	output cruiseState1 := 0 : integer;
-	output accelPresseed1 : boolean, brakePressed1 : boolean;
+	input on1: boolean, off1 : boolean, resume1 : boolean, set1 : boolean;
+	input quickAccel : boolean, quickDecel : boolean;
+	input accel1 : double, brake1 : double, speed1 : double;
+	input accelPressed1 : boolean, brakePressed1 : boolean;
+	
 	output cruiseSpeed : double;
-
-
+	output throttleCmd : double;
+	output cruiseState1 := 0 : integer;
 
 	run PedalDetection 
 	[
 		signal brake1/brake;
 		signal accel1/accel;
-		signal accelPresseed1/accelPressed;
+		signal accelPressed1/accelPressed;
 		signal brakePressed1/brakePressed
 	]
 	
@@ -96,7 +96,7 @@ module cruiseController:
 		signal off1/off;
 		signal resume1/resume;
 		signal brakePressed1/brakePressed;
-		signal accelPresseed1/accelPressed;
+		signal accelPressed1/accelPressed;
 		signal speed1/speed
 	]
 
