@@ -23,16 +23,14 @@ module PedalDetection:
 				end if;
 		end loop
 	end var
-
 end module
 
 % Cruise Speed Management (Krithik)
 
 
-% Cruise State Management (Krishen)
 
 
-% State controller module, handles state transitions
+% Cruise state management module, handles state transitions (Krishen)
 module StateController:
 	input on: boolean, off : boolean, resume : boolean;
 	input accelPressed : boolean, brakePressed : boolean;
