@@ -33,7 +33,7 @@ end module
 % Cruise state management module, handles state transitions (Krishen)
 module StateController:
 	input on: boolean, off : boolean, resume : boolean;
-	input accelPressed : boolean, brakePressed : boolean;
+	input accelPressed : boolean, brakePressed : boolean; 
 	input speed := 50.0 : double;
 
 	% Cruise State:
@@ -71,6 +71,9 @@ module cruiseController:
 	input on1: boolean, off1 : boolean, resume1 : boolean, set1 : boolean;
 	input quickAccel : boolean, quickDecel : boolean;
 	input accel1 : double, brake1 : double, speed1 : double;
+
+	% accelPressed and brakePressed cant be inputs to the system, idk how else to export them
+	% for use in other modules though so I'm leaving it as it is for now because it works.
 	input accelPressed1 : boolean, brakePressed1 : boolean;
 	
 	output cruiseSpeed : double;
