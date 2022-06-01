@@ -1,4 +1,4 @@
-% pedal detection (Krithik)
+% pedal detection (Krithik) NOT REALLY NEEDED
 % module PedalDetection:
 % 	input accel : double, brake : double;
 % 	output accelPressed : boolean, brakePressed : boolean;
@@ -71,6 +71,7 @@ module StateController:
 		% Move from STDBY to ON when resume pressed, acelerator not pressed, and speed in range
 		if (currentState = 2 and ?resume and not(accelPressed) and speedInRange) then
 			currentState := 1;
+			% The last set cruiseSpeed should be reused here
 
 		% Move from STDBY to DISABLE when resume and (accelerator pressed or speed not in range)
 		elsif (currentState = 2 and ?resume and (accelPressed or not(speedInRange))) then
@@ -85,6 +86,7 @@ module StateController:
 		% Move from DISABLE to ON if accelerator not pressed and speed in range
 		if (currentState = 3 and not(accelPressed) and speedInRange) then
 			currentState := 1;
+			% The last set cruiseSpeed should be reused here
 		end if;
 
 		emit cruiseState(currentState);
@@ -113,6 +115,12 @@ module cruiseController:
 	output cruiseSpeed : double;
 	output throttleCmd : double;
 	output cruiseState1 := 0 : integer;
+
+
+	% I dont think we need this module at all... mainly because it doesnt do anything to make
+	% stuff easier for us and also it introduces multiple emits at the same time(which you cant do)
+	% The multiple emits happen because the accelPressesd and brakePressed are defined as inputs/outputs
+	% because our other functions use them. Decided to incorporate directly into the module (less code)
 
 	% run PedalDetection 
 	% [
