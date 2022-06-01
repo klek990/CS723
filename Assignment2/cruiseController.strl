@@ -49,16 +49,16 @@ module StateController:
 	input accel : double, brake : double;
 
 	% Cruise State:
-	% 	0 = OFF
-	% 	1 = ON
-	% 	2 = STDBY
-	% 	3 = DISABLE
+	% 	1 = OFF
+	% 	2 = ON
+	% 	3 = STDBY
+	% 	4 = DISABLE
 	output cruiseState : integer;
 
 	% Brake Pressed and AccelPressed cannot be high at the same time
 	% relation brakePressed # accelPressed;
 
-	var currentState := 0 : integer, speedMin := 30.0 : double, speedInRange : boolean, speedMax := 150.0 : double in
+	var currentState := 1 : integer, speedMin := 30.0 : double, speedInRange : boolean, speedMax := 150.0 : double in
 	var accelPressed : boolean, brakePressed : boolean in
 	loop
 		pause;
@@ -68,36 +68,36 @@ module StateController:
 		
 		% Move to OFF when off pressed (priority)
 		if (?off) then 
-			currentState := 0;
-
-		%  Output ON when on button pressed, accelerator not pressed, and speed in range
-		elsif (?on or (currentState = 1 and not(accelPressed) and speedInRange)) then
 			currentState := 1;
 
+		%  Output ON when on button pressed, accelerator not pressed, and speed in range
+		elsif (?on or (currentState = 2 and not(accelPressed) and speedInRange)) then
+			currentState := 2;
+
 		% Move from ON to DISABLE when accelPressed = false and speed isnt in bounds
-		elsif (currentState = 1 and (accelPressed or not(speedInRange))) then
-			currentState := 3;
+		elsif (currentState = 2 and (accelPressed or not(speedInRange))) then
+			currentState := 4;
 		end if;
 
 		% Move from STDBY to ON when resume pressed, acelerator not pressed, and speed in range
-		if (currentState = 2 and ?resume and not(accelPressed) and speedInRange) then
-			currentState := 1;
-			% The last set cruiseSpeed should be reused here
+		if (currentState = 3 and ?resume and not(accelPressed) and speedInRange) then
+			currentState := 2;
+			% The last set cruiseSpeed should be reused here or in speed management?
 
 		% Move from STDBY to DISABLE when resume and (accelerator pressed or speed not in range)
-		elsif (currentState = 2 and ?resume and (accelPressed or not(speedInRange))) then
-			currentState := 3;
+		elsif (currentState = 3 and ?resume and (accelPressed or not(speedInRange))) then
+			currentState := 4;
 		end if;
 			
 		% Move to STDBY if the brake is pressed (priority)
 		if (brakePressed) then
-			currentState := 2;
+			currentState := 3;
 		end if;
 
 		% Move from DISABLE to ON if accelerator not pressed and speed in range
-		if (currentState = 3 and not(accelPressed) and speedInRange) then
-			currentState := 1;
-			% The last set cruiseSpeed should be reused here
+		if (currentState = 4 and not(accelPressed) and speedInRange) then
+			currentState := 2;
+			% The last set cruiseSpeed should be reused here or in speed management?
 		end if;
 
 		emit cruiseState(currentState);
@@ -125,7 +125,7 @@ module cruiseController:
 	
 	output cruiseSpeed1 := 0.0 : double;
 	output throttleCmd1 := 0.0 : double;
-	output cruiseState1 := 0 : integer;
+	output cruiseState1 := 1 : integer;
 
 
 	% I dont think we need this module at all... mainly because it doesnt do anything to make
