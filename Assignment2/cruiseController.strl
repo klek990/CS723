@@ -54,6 +54,15 @@ module SpeedManagement:
 			% If set is pressed thereafter, set the new speed
 			elsif (?set and onPressedOut and speedInRange) then
 				cruiseSpeedOut := ?speed;
+
+			% Check if incrementing speed will still be within range 
+			% Also make sure both quickAccel and quickDecel arent true at the same time
+			elsif (?quickAccel and not(?quickDecel) and isEnabled and cruiseSpeedOut + speedInc <= speedMax) then
+				cruiseSpeedOut := cruiseSpeedOut + speedInc;
+			
+			% Check if decrementing speed will still be within range
+			elsif (?quickDecel and not(?quickAccel) and isEnabled and cruiseSpeedOut - speedInc >= speedMin) then
+				cruiseSpeedOut := cruiseSpeedOut - speedInc;
 			end if;
 
 			emit cruiseSpeed(cruiseSpeedOut);
@@ -62,8 +71,6 @@ module SpeedManagement:
 	end var
 
 end module
-
-
 
 
 % Cruise state management module, handles state transitions (Krishen)
