@@ -37,10 +37,18 @@ module SpeedManagement:
 	function checkSpeedIncrement(float, boolean, boolean) : boolean;
 	
 	var onPressedOut := false : boolean, isEnabled := false : boolean, speedInRange : boolean, checkSpeedInc : boolean in
-	var speedInc := 2.5f : float, cruiseSpeedOut := 0.0f : float in
+	var speedInc := 2.5f : float, speedOut := 0.0f : float, cruiseSpeedOut := 0.0f : float in
 	loop
 		pause;
-			speedInRange := checkSpeedInRange(?speed);
+			speedOut := ?speed;
+			if (?speed > 150.0f) then
+				speedOut := 150.0f;
+			elsif (?speed < 30.0f) then
+				speedOut := 30.0f;
+			end if;
+			
+
+			speedInRange := checkSpeedInRange(speedOut);
 			checkSpeedInc := checkSpeedIncrement(cruiseSpeedOut, ?quickAccel, ?quickDecel);
 
 			% Conditions to set and reset isEnabled
@@ -52,12 +60,12 @@ module SpeedManagement:
 
 			% Initially set cruise speed when on pressed (This should only update once)
 			elsif (?on and not(onPressedOut) and speedInRange and isEnabled) then
-				cruiseSpeedOut := ?speed;
+				cruiseSpeedOut := speedOut;
 				onPressedOut := true;
 
 			% If set is pressed thereafter, set the new speed
 			elsif (?set and onPressedOut and speedInRange) then
-				cruiseSpeedOut := ?speed;
+				cruiseSpeedOut := speedOut;
 
 			% Check if incrementing speed will still be within range 
 			% Also make sure both quickAccel and quickDecel arent true at the same time
