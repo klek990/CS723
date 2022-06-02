@@ -28,13 +28,38 @@
 % Cruise Speed Management (Krithik)
 
 module SpeedManagement:
-output cruiseSpeed : double; 
+	input speed : double;
+	input on : boolean, set : boolean, quickAccel : boolean, quickDecel : boolean;
+	output cruiseSpeed : double; 
+	output cruiseState : integer;
+	
+	var onPressedOut := false : boolean, isEnabled := false : boolean, speedInRange : boolean, cruiseSpeedOut := 0.0 : double in
+	var speedMin := 30.0 : double, speedMax := 150.0 : double, speedInc := 2.5 : double in
+	loop
+		pause;
+			speedInRange := ?speed >= speedMin and ?speed <= speedMax;
 
-loop
-	pause;
-		emit cruiseSpeed(2.0);
+			% Conditions to set and reset isEnabled
+			if (not isEnabled and ?cruiseState = 2 or ?cruiseState = 3 or ?cruiseState = 4) then
+				isEnabled := true;
+				onPressedOut := false;
+			elsif (?cruiseState = 1) then
+				isEnabled := false;
 
-end loop
+			% Initially set cruise speed when on pressed (This should only update once)
+			elsif (?on and not(onPressedOut) and speedInRange and isEnabled) then
+				cruiseSpeedOut := ?speed;
+				onPressedOut := true;
+
+			% If set is pressed thereafter, set the new speed
+			elsif (?set and onPressedOut and speedInRange) then
+				cruiseSpeedOut := ?speed;
+			end if;
+
+			emit cruiseSpeed(cruiseSpeedOut);
+	end loop
+	end var
+	end var
 
 end module
 
@@ -116,7 +141,7 @@ module cruiseController:
 
 	% Visible inputs/outputs StateController
 	input on1 := false : boolean, off1 := false : boolean, resume1 := false : boolean, set1 := false : boolean;
-	input quickAccel : boolean, quickDecel : boolean;
+	input quickAccel1 := false : boolean, quickDecel1 := false : boolean;
 	input accel1 := 0.0 : double, brake1 := 0.0 : double, speed1 := 0.0 : double;
 
 	% accelPressed and brakePressed cant be inputs to the system, idk how else to export them
@@ -126,7 +151,6 @@ module cruiseController:
 	output cruiseSpeed1 := 0.0 : double;
 	output throttleCmd1 := 0.0 : double;
 	output cruiseState1 := 1 : integer;
-
 
 	% I dont think we need this module at all... mainly because it doesnt do anything to make
 	% stuff easier for us and also it introduces multiple emits at the same time(which you cant do)
@@ -160,7 +184,13 @@ module cruiseController:
 
 	run SpeedManagement
 	[
-		signal cruiseSpeed1/cruiseSpeed
+		signal speed1/speed;
+		signal on1/on;
+		signal set1/set;
+		signal quickAccel1/quickAccel;
+		signal quickDecel1/quickDecel;
+		signal cruiseSpeed1/cruiseSpeed;
+		signal cruiseState1/cruiseState
 	]
 
 end module
