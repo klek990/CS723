@@ -1,9 +1,9 @@
 % pedal detection (Krithik) NOT REALLY NEEDED
 % module PedalDetection:
-% 	input accel : double, brake : double;
+% 	input accel : float, brake : float;
 % 	output accelPressed : boolean, brakePressed : boolean;
 
-% 	var pedalsMin := 0.03 : double in
+% 	var pedalsMin := 0.03 : float in
 % 		loop
 % 			pause;
 % 				% Emit if pedal pressed enough
@@ -28,13 +28,13 @@
 % Cruise Speed Management (Krithik)
 
 module SpeedManagement:
-	input speed : double;
+	input speed : float;
 	input on : boolean, set : boolean, quickAccel : boolean, quickDecel : boolean;
-	output cruiseSpeed : double; 
+	output cruiseSpeed : float; 
 	output cruiseState : integer;
 	
-	var onPressedOut := false : boolean, isEnabled := false : boolean, speedInRange : boolean, cruiseSpeedOut := 0.0 : double in
-	var speedMin := 30.0 : double, speedMax := 150.0 : double, speedInc := 2.5 : double in
+	var onPressedOut := false : boolean, isEnabled := false : boolean, speedInRange : boolean, cruiseSpeedOut := 0.0f : float in
+	var speedMin := 30.0f : float, speedMax := 150.0f : float, speedInc := 2.5f : float in
 	loop
 		pause;
 			speedInRange := ?speed >= speedMin and ?speed <= speedMax;
@@ -77,8 +77,8 @@ end module
 module StateController:
 	input on: boolean, off : boolean, resume : boolean;
 	% input accelPressed : boolean, brakePressed : boolean; 
-	input speed := 0.0 : double;
-	input accel : double, brake : double;
+	input speed := 0.0f : float;
+	input accel : float, brake : float;
 
 	% Cruise State:
 	% 	1 = OFF
@@ -90,13 +90,13 @@ module StateController:
 	% Brake Pressed and AccelPressed cannot be high at the same time
 	% relation brakePressed # accelPressed;
 
-	var currentState := 1 : integer, speedMin := 30.0 : double, speedInRange : boolean, speedMax := 150.0 : double in
+	var currentState := 1 : integer, speedMin := 30.0f : float, speedInRange : boolean, speedMax := 150.0f : float in
 	var accelPressed : boolean, brakePressed : boolean in
 	loop
 		pause;
 		speedInRange := ?speed >= speedMin and ?speed <= speedMax;
-		accelPressed := (?accel >= 0.03);
-		brakePressed := (?brake >= 0.03);
+		accelPressed := (?accel >= 0.03f);
+		brakePressed := (?brake >= 0.03f);
 		
 		% Move to OFF when off pressed (priority)
 		if (?off) then 
@@ -149,14 +149,14 @@ module cruiseController:
 	% Visible inputs/outputs StateController
 	input on1 := false : boolean, off1 := false : boolean, resume1 := false : boolean, set1 := false : boolean;
 	input quickAccel1 := false : boolean, quickDecel1 := false : boolean;
-	input accel1 := 0.0 : double, brake1 := 0.0 : double, speed1 := 0.0 : double;
+	input accel1 := 0.0f : float, brake1 := 0.0f : float, speed1 := 0.0f : float;
 
 	% accelPressed and brakePressed cant be inputs to the system, idk how else to export them
 	% for use in other modules though so I'm leaving it as it is for now because it works.
 	% input accelPressed1 : boolean, brakePressed1 : boolean;
 	
-	output cruiseSpeed1 := 0.0 : double;
-	output throttleCmd1 := 0.0 : double;
+	output cruiseSpeed1 := 0.0f : float;
+	output throttleCmd1 := 0.0f : float;
 	output cruiseState1 := 1 : integer;
 
 	% I dont think we need this module at all... mainly because it doesnt do anything to make
