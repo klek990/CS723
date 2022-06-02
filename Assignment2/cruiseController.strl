@@ -32,12 +32,16 @@ module SpeedManagement:
 	input on : boolean, set : boolean, quickAccel : boolean, quickDecel : boolean;
 	output cruiseSpeed : float; 
 	output cruiseState : integer;
+
+	function checkSpeedInRange(float) : boolean;
+	function checkSpeedIncrement(float, boolean, boolean) : boolean;
 	
-	var onPressedOut := false : boolean, isEnabled := false : boolean, speedInRange : boolean, cruiseSpeedOut := 0.0f : float in
-	var speedMin := 30.0f : float, speedMax := 150.0f : float, speedInc := 2.5f : float in
+	var onPressedOut := false : boolean, isEnabled := false : boolean, speedInRange : boolean, checkSpeedInc : boolean in
+	var speedInc := 2.5f : float, cruiseSpeedOut := 0.0f : float in
 	loop
 		pause;
-			speedInRange := ?speed >= speedMin and ?speed <= speedMax;
+			speedInRange := checkSpeedInRange(?speed);
+			checkSpeedInc := checkSpeedIncrement(cruiseSpeedOut, ?quickAccel, ?quickDecel);
 
 			% Conditions to set and reset isEnabled
 			if (not isEnabled and ?cruiseState = 2 or ?cruiseState = 3 or ?cruiseState = 4) then
@@ -57,11 +61,11 @@ module SpeedManagement:
 
 			% Check if incrementing speed will still be within range 
 			% Also make sure both quickAccel and quickDecel arent true at the same time
-			elsif (?quickAccel and not(?quickDecel) and isEnabled and cruiseSpeedOut + speedInc <= speedMax) then
+			elsif (?quickAccel and not(?quickDecel) and isEnabled and checkSpeedInc) then
 				cruiseSpeedOut := cruiseSpeedOut + speedInc;
 			
 			% Check if decrementing speed will still be within range
-			elsif (?quickDecel and not(?quickAccel) and isEnabled and cruiseSpeedOut - speedInc >= speedMin) then
+			elsif (?quickDecel and not(?quickAccel) and isEnabled and checkSpeedInc) then
 				cruiseSpeedOut := cruiseSpeedOut - speedInc;
 			end if;
 
@@ -76,7 +80,6 @@ end module
 % Cruise state management module, handles state transitions (Krishen)
 module StateController:
 	input on: boolean, off : boolean, resume : boolean;
-	% input accelPressed : boolean, brakePressed : boolean; 
 	input speed := 0.0f : float;
 	input accel : float, brake : float;
 
@@ -87,16 +90,20 @@ module StateController:
 	% 	4 = DISABLE
 	output cruiseState : integer;
 
+	function checkAccelPedal(float) : boolean;
+	function checkBrakePedal(float) : boolean;
+	function checkSpeedInRange(float) : boolean;
+
 	% Brake Pressed and AccelPressed cannot be high at the same time
 	% relation brakePressed # accelPressed;
 
-	var currentState := 1 : integer, speedMin := 30.0f : float, speedInRange : boolean, speedMax := 150.0f : float in
-	var accelPressed : boolean, brakePressed : boolean in
+	var currentState := 1 : integer in
+	var speedInRange : boolean, accelPressed : boolean, brakePressed : boolean in
 	loop
 		pause;
-		speedInRange := ?speed >= speedMin and ?speed <= speedMax;
-		accelPressed := (?accel >= 0.03f);
-		brakePressed := (?brake >= 0.03f);
+		speedInRange := checkSpeedInRange(?speed);
+		accelPressed := checkAccelPedal(?accel);
+		brakePressed := checkBrakePedal(?brake);
 		
 		% Move to OFF when off pressed (priority)
 		if (?off) then 
@@ -150,10 +157,6 @@ module cruiseController:
 	input on1 := false : boolean, off1 := false : boolean, resume1 := false : boolean, set1 := false : boolean;
 	input quickAccel1 := false : boolean, quickDecel1 := false : boolean;
 	input accel1 := 0.0f : float, brake1 := 0.0f : float, speed1 := 0.0f : float;
-
-	% accelPressed and brakePressed cant be inputs to the system, idk how else to export them
-	% for use in other modules though so I'm leaving it as it is for now because it works.
-	% input accelPressed1 : boolean, brakePressed1 : boolean;
 	
 	output cruiseSpeed1 := 0.0f : float;
 	output throttleCmd1 := 0.0f : float;
@@ -182,8 +185,6 @@ module cruiseController:
 		signal on1/on;
 		signal off1/off;
 		signal resume1/resume;
-		% signal brakePressed1/brakePressed;
-		% signal accelPressed1/accelPressed;
 		signal speed1/speed
 	]
 
