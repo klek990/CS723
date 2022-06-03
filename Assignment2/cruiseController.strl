@@ -1,31 +1,4 @@
-% pedal detection (Krithik) NOT REALLY NEEDED
-% module PedalDetection:
-% 	input accel : float, brake : float;
-% 	output accelPressed : boolean, brakePressed : boolean;
-
-% 	var pedalsMin := 0.03 : float in
-% 		loop
-% 			pause;
-% 				% Emit if pedal pressed enough
-% 				if (?accel >= 0.03) then
-% 					emit accelPressed(true)
-% 				elsif (?brake >= 0.03) then
-% 					emit brakePressed(true)
-% 				end if;
-
-% 				% Reset accelPressed/brakePressed when input low
-% 				if (?accel < 0.03) then
-% 					emit accelPressed(false)
-% 				end if;
-
-% 				if (?brake < 0.03) then
-% 					emit brakePressed(false)
-% 				end if;
-% 		end loop
-% 	end var
-% end module
-
-% Cruise Speed Management (Krithik)
+% Cruise Speed Management
 
 module SpeedManagement:
 	input speed : float;
@@ -47,12 +20,11 @@ module SpeedManagement:
 				speedOut := 30.0f;
 			end if;
 			
-
 			speedInRange := checkSpeedInRange(speedOut);
 			checkSpeedInc := checkSpeedIncrement(cruiseSpeedOut, ?quickAccel, ?quickDecel);
 
 			% Conditions to set and reset isEnabled
-			if (not isEnabled and ?cruiseState = 2 or ?cruiseState = 3 or ?cruiseState = 4) then
+			if (not isEnabled and (?cruiseState = 2 or ?cruiseState = 3 or ?cruiseState = 4)) then
 				isEnabled := true;
 				onPressedOut := false;
 			elsif (?cruiseState = 1) then
@@ -85,7 +57,7 @@ module SpeedManagement:
 end module
 
 
-% Cruise state management module, handles state transitions (Krishen)
+% Cruise state management module, handles state transitions
 module StateController:
 	input on: boolean, off : boolean, resume : boolean;
 	input speed := 0.0f : float, accel : float, brake : float;
@@ -147,45 +119,49 @@ module StateController:
 		end if;
 
 		emit cruiseState(currentState);
-		
 	end loop
 	end var
 	end var
 end module
 
-% Car Driving Control (Krishen)
+% Car Driving Control
 module DrivingControl:
 	input cruiseState : integer, accel : float;
 	input speed : float, cruiseSpeed : float;
 	output throttleCmd : float;
-	output goingOn : integer;
 
 	% Regulate and saturate throttle given conditions
 	function regulateThrottle(integer, float, float) : float;
 	
-	var throttleCmdOut := 0.0f : float, currentState := 0 : integer, isGoingOn := 0 : integer in 
+	var throttleCmdOut := 0.0f : float, currentState := 0 : integer, isGoingOn := 0 : integer, enteredOn := false : boolean in 
 	loop
 		pause;
 			currentState := ?cruiseState;
 			% Reset isGoingOn when moving to another state
 			if (currentState = 1 or currentState = 3 or currentState = 4) then
 				isGoingOn := 0;
+				enteredOn := false;
 			end if;
 			
 			% Accelerator state, throttleCmd driven by accelerator when cruise OFF
 			if (currentState = 1) then
-				 throttleCmdOut:= ?accel;
+				throttleCmdOut:= ?accel;
 			
 			% Regulation state, throttleCmd driven by regulate functions when cruise ON
-			% Set isGoingOn only when it has just moved from another state to ON
-			elsif (currentState = 2) then
+			% Set isGoingOn only when it has JUST moved from another state to ON, otherwise false
+			elsif (not enteredOn and currentState = 2) then
 				isGoingOn := 1;
+				enteredOn := true;
 				throttleCmdOut := regulateThrottle(isGoingOn, ?cruiseSpeed, ?speed);
-
+			
+			% If we stay in the ON state, don't reset integral part (i.e isGoingOn = 0 (false))
+			elsif (enteredOn and currentState = 2) then
+				isGoingOn := 0;
+				throttleCmdOut := regulateThrottle(isGoingOn, ?cruiseSpeed, ?speed);
+				
 			end if;
-			emit goingOn(isGoingOn);
+			
 			emit throttleCmd(throttleCmdOut);
-
 	end loop
 	end var
 end module
@@ -202,23 +178,6 @@ module CruiseController:
 	output cruiseSpeed1 := 0.0f : float;
 	output throttleCmd1 := 0.0f : float;
 	output cruiseState1 := 1 : integer;
-
-	output goingOn1 := 0 : integer;
-
-	% I dont think we need this module at all... mainly because it doesnt do anything to make
-	% stuff easier for us and also it introduces multiple emits at the same time(which you cant do)
-	% The multiple emits happen because the accelPressesd and brakePressed are defined as inputs/outputs
-	% because our other functions use them. Decided to incorporate directly into the module (less code)
-
-	% run PedalDetection 
-	% [
-	% 	signal brake1/brake;
-	% 	signal accel1/accel;
-	% 	signal accelPressed1/accelPressed;
-	% 	signal brakePressed1/brakePressed
-	% ]
-	
-	% ||
 
 	run StateController 
 	[
@@ -248,7 +207,6 @@ module CruiseController:
 
 	run DrivingControl
 	[
-		signal goingOn1/goingOn;
 		signal cruiseSpeed1/cruiseSpeed;
 		signal speed1/speed;
 		signal throttleCmd1/throttleCmd;
