@@ -156,22 +156,34 @@ end module
 % Car Driving Control (Krishen)
 module DrivingControl:
 	input cruiseState : integer, accel : float;
+	input speed : float, cruiseSpeed : float;
 	output throttleCmd : float;
-	
+	output goingOn : integer;
 
-	var throttleCmdOut := 0.0f : float, currentState := ?cruiseState : integer in 
+	% Regulate and saturate throttle given conditions
+	function regulateThrottle(integer, float, float) : float;
+	
+	var throttleCmdOut := 0.0f : float, currentState := 0 : integer, isGoingOn := 0 : integer in 
 	loop
 		pause;
+			currentState := ?cruiseState;
+			% Reset isGoingOn when moving to another state
+			if (currentState = 1 or currentState = 3 or currentState = 4) then
+				isGoingOn := 0;
+			end if;
+			
 			% Accelerator state, throttleCmd driven by accelerator when cruise OFF
 			if (currentState = 1) then
 				 throttleCmdOut:= ?accel;
 			
 			% Regulation state, throttleCmd driven by regulate functions when cruise ON
-			% USE FUNCTIONS HERE FOR OVERSHOOT, FREEZING, AND CALCUALTIONS
-			% elsif (?crusieState = 2) then
-			% 	throttleCmdOut := 
-			end if;
+			% Set isGoingOn only when it has just moved from another state to ON
+			elsif (currentState = 2) then
+				isGoingOn := 1;
+				throttleCmdOut := regulateThrottle(isGoingOn, ?cruiseSpeed, ?speed);
 
+			end if;
+			emit goingOn(isGoingOn);
 			emit throttleCmd(throttleCmdOut);
 
 	end loop
@@ -190,6 +202,8 @@ module CruiseController:
 	output cruiseSpeed1 := 0.0f : float;
 	output throttleCmd1 := 0.0f : float;
 	output cruiseState1 := 1 : integer;
+
+	output goingOn1 := 0 : integer;
 
 	% I dont think we need this module at all... mainly because it doesnt do anything to make
 	% stuff easier for us and also it introduces multiple emits at the same time(which you cant do)
@@ -234,6 +248,9 @@ module CruiseController:
 
 	run DrivingControl
 	[
+		signal goingOn1/goingOn;
+		signal cruiseSpeed1/cruiseSpeed;
+		signal speed1/speed;
 		signal throttleCmd1/throttleCmd;
 		signal accel1/accel;
 		signal cruiseState1/cruiseState
