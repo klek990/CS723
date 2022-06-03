@@ -5,13 +5,13 @@
 /* Check if acceleerator pedal pressed */
 int checkAccelPedal(float accel)
 {
-	return accel >= 0.03;
+	return accel >= 3;
 }
 
 /* Check if brake pedal pressed */
 int checkBrakePedal(float brake)
 {
-    return brake >= 0.03;
+    return brake >= 3;
 }
 
 /* Return true if speed within range, else false */
