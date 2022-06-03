@@ -88,8 +88,7 @@ end module
 % Cruise state management module, handles state transitions (Krishen)
 module StateController:
 	input on: boolean, off : boolean, resume : boolean;
-	input speed := 0.0f : float;
-	input accel : float, brake : float;
+	input speed := 0.0f : float, accel : float, brake : float;
 
 	% Cruise State:
 	% 	1 = OFF
@@ -155,11 +154,33 @@ module StateController:
 end module
 
 % Car Driving Control (Krishen)
+module DrivingControl:
+	input cruiseState : integer, accel : float;
+	output throttleCmd : float;
+	
 
+	var throttleCmdOut := 0.0f : float, currentState := ?cruiseState : integer in 
+	loop
+		pause;
+			% Accelerator state, throttleCmd driven by accelerator when cruise OFF
+			if (currentState = 1) then
+				 throttleCmdOut:= ?accel;
+			
+			% Regulation state, throttleCmd driven by regulate functions when cruise ON
+			% USE FUNCTIONS HERE FOR OVERSHOOT, FREEZING, AND CALCUALTIONS
+			% elsif (?crusieState = 2) then
+			% 	throttleCmdOut := 
+			end if;
+
+			emit throttleCmd(throttleCmdOut);
+
+	end loop
+	end var
+end module
 
 
 % Toplevel module running
-module cruiseController:
+module CruiseController:
 
 	% Visible inputs/outputs StateController
 	input on1 := false : boolean, off1 := false : boolean, resume1 := false : boolean, set1 := false : boolean;
@@ -206,6 +227,15 @@ module cruiseController:
 		signal quickAccel1/quickAccel;
 		signal quickDecel1/quickDecel;
 		signal cruiseSpeed1/cruiseSpeed;
+		signal cruiseState1/cruiseState
+	]
+
+	||
+
+	run DrivingControl
+	[
+		signal throttleCmd1/throttleCmd;
+		signal accel1/accel;
 		signal cruiseState1/cruiseState
 	]
 
