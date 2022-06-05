@@ -100,7 +100,6 @@ module StateController:
 		% Move from STDBY to ON when resume pressed, acelerator not pressed, and speed in range
 		if (currentState = 3 and ?resume and not(accelPressed) and speedInRange) then
 			currentState := 2;
-			% The last set cruiseSpeed should be reused here or in speed management?
 
 		% Move from STDBY to DISABLE when resume and (accelerator pressed or speed not in range)
 		elsif (currentState = 3 and ?resume and (accelPressed or not(speedInRange))) then
@@ -115,7 +114,6 @@ module StateController:
 		% Move from DISABLE to ON if accelerator not pressed and speed in range
 		if (currentState = 4 and not(accelPressed) and speedInRange) then
 			currentState := 2;
-			% The last set cruiseSpeed should be reused here or in speed management?
 		end if;
 
 		emit cruiseState(currentState);
