@@ -108,7 +108,7 @@ module StateController:
 		end if;
 			
 		% Move to STDBY if the brake is pressed (priority)
-		if (brakePressed) then
+		if ((currentState = 2 or currentState = 3 or currentState = 4) and brakePressed) then
 			currentState := 3;
 		end if;
 
