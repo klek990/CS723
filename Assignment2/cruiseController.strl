@@ -2,14 +2,15 @@
 
 module SpeedManagement:
 	input speed : float;
-	input on : boolean, set : boolean, quickAccel : boolean, quickDecel : boolean;
+	input on, set, quickAccel, quickDecel;
 	output cruiseSpeed : float; 
 	output cruiseState : integer;
 
 	function checkSpeedInRange(float) : boolean;
-	function checkSpeedIncrement(float, boolean, boolean) : boolean;
+	function checkSpeedIncrement(float) : boolean;
+	function checkSpeedDecrement(float) : boolean;
 	
-	var onPressedOut := false : boolean, isEnabled := false : boolean, speedInRange : boolean, checkSpeedInc : boolean in
+	var onPressedOut := false : boolean, isEnabled := false : boolean, speedInRange : boolean, checkSpeedInc : boolean, checkSpeedDec : boolean in
 	var speedInc := 2.5f : float, speedOut := 0.0f : float, cruiseSpeedOut := 0.0f : float in
 	loop
 		pause;
@@ -21,33 +22,46 @@ module SpeedManagement:
 			end if;
 			
 			speedInRange := checkSpeedInRange(speedOut);
-			checkSpeedInc := checkSpeedIncrement(cruiseSpeedOut, ?quickAccel, ?quickDecel);
+			checkSpeedInc := checkSpeedIncrement(cruiseSpeedOut);
+			checkSpeedDec := checkSpeedDecrement(cruiseSpeedOut);
 
 			% Conditions to set and reset isEnabled
 			if (not isEnabled and (?cruiseState = 2 or ?cruiseState = 3 or ?cruiseState = 4)) then
 				isEnabled := true;
 				onPressedOut := false;
+
 			elsif (?cruiseState = 1) then
 				isEnabled := false;
-
+			end if;
 			% Initially set cruise speed when on pressed (This should only update once)
-			elsif (?on and not(onPressedOut) and speedInRange and isEnabled) then
-				cruiseSpeedOut := speedOut;
-				onPressedOut := true;
+			present on then
+				if (not(onPressedOut) and speedInRange and isEnabled) then
+					cruiseSpeedOut := speedOut;
+					onPressedOut := true;
+				end if;
+			end present;
 
 			% If set is pressed thereafter, set the new speed
-			elsif (?set and onPressedOut and speedInRange) then
-				cruiseSpeedOut := speedOut;
+			present set then
+				if (isEnabled and onPressedOut and speedInRange) then
+					cruiseSpeedOut := speedOut;
+				end if;
+			end present;
 
 			% Check if incrementing speed will still be within range 
 			% Also make sure both quickAccel and quickDecel arent true at the same time
-			elsif (?quickAccel and not(?quickDecel) and isEnabled and checkSpeedInc) then
-				cruiseSpeedOut := cruiseSpeedOut + speedInc;
+			present quickAccel then
+				if (isEnabled and checkSpeedInc) then
+					cruiseSpeedOut := cruiseSpeedOut + speedInc;
+				end if;
+			end present;
 			
 			% Check if decrementing speed will still be within range
-			elsif (?quickDecel and not(?quickAccel) and isEnabled and checkSpeedInc) then
-				cruiseSpeedOut := cruiseSpeedOut - speedInc;
-			end if;
+			present quickDecel then
+				if (isEnabled and checkSpeedDec ) then
+					cruiseSpeedOut := cruiseSpeedOut - speedInc;
+				end if;
+			end present;
 
 			emit cruiseSpeed(cruiseSpeedOut);
 	end loop
@@ -59,8 +73,8 @@ end module
 
 % Cruise state management module, handles state transitions
 module StateController:
-	input on: boolean, off : boolean, resume : boolean;
-	input speed := 0.0f : float, accel : float, brake : float;
+	input on, off, resume;
+	input speed : float, accel : float, brake : float;
 
 	% Cruise State:
 	% 	1 = OFF
@@ -83,40 +97,69 @@ module StateController:
 		speedInRange := checkSpeedInRange(?speed);
 		accelPressed := checkAccelPedal(?accel);
 		brakePressed := checkBrakePedal(?brake);
-		
-		% Move to OFF when off pressed (priority)
-		if (?off) then 
-			currentState := 1;
 
-		%  Output ON when on button pressed, accelerator not pressed, and speed in range
-		elsif (?on or (currentState = 2 and not(accelPressed) and speedInRange)) then
-			currentState := 2;
+		trap enteredOn in
+			% Move to OFF when off pressed (priority)
+			present off then
+				currentState := 1;
+				emit cruiseState(currentState);
+				exit enteredOn;
+			end present;
 
-		% Move from ON to DISABLE when accelPressed = false and speed isnt in bounds
-		elsif (currentState = 2 and (accelPressed or not(speedInRange))) then
-			currentState := 4;
-		end if;
-
-		% Move from STDBY to ON when resume pressed, acelerator not pressed, and speed in range
-		if (currentState = 3 and ?resume and not(accelPressed) and speedInRange) then
-			currentState := 2;
-
-		% Move from STDBY to DISABLE when resume and (accelerator pressed or speed not in range)
-		elsif (currentState = 3 and ?resume and (accelPressed or not(speedInRange))) then
-			currentState := 4;
-		end if;
+			%  Output ON when on button pressed, accelerator not pressed, and speed in range
 			
-		% Move to STDBY if the brake is pressed (priority)
-		if ((currentState = 2 or currentState = 3 or currentState = 4) and brakePressed) then
-			currentState := 3;
-		end if;
+			present on then
+				currentState := 2;
+				emit cruiseState(currentState);
+				exit enteredOn;
+			end present;
 
-		% Move from DISABLE to ON if accelerator not pressed and speed in range
-		if (currentState = 4 and not(accelPressed) and speedInRange) then
-			currentState := 2;
-		end if;
+			% Move to STDBY if the brake is pressed (priority)
+			if (brakePressed and (currentState = 2 or currentState = 3 or currentState = 4)) then
+				currentState := 3;
+				emit cruiseState(currentState);
+				exit enteredOn;
+			end if;
 
-		emit cruiseState(currentState);
+			if (currentState = 2) then
+				if (not(accelPressed) and speedInRange) then
+					currentState := 2;
+					emit cruiseState(currentState);
+					exit enteredOn;
+
+				% Move from ON to DISABLE when accelPressed = false and speed isnt in bounds
+				elsif (accelPressed or not(speedInRange)) then
+					currentState := 4;
+					emit cruiseState(currentState);
+					exit enteredOn;
+				end if;
+			end if;
+
+			present resume then
+				if (currentState = 3) then
+
+					% Move from STDBY to ON when resume pressed, acelerator not pressed, and speed in range
+					if (not(accelPressed) and speedInRange) then
+						currentState := 2;
+						emit cruiseState(currentState);
+						exit enteredOn;
+
+					% Move from STDBY to DISABLE when resume and (accelerator pressed or speed not in range)
+					elsif (accelPressed or not(speedInRange)) then
+						currentState := 4;
+						emit cruiseState(currentState);
+						exit enteredOn;
+					end if;
+				end if;
+			end present;
+
+			% Move from DISABLE to ON if accelerator not pressed and speed in range
+			if (currentState = 4 and not(accelPressed) and speedInRange) then
+				currentState := 2;
+				emit cruiseState(currentState);
+				exit enteredOn;
+			end if;
+		end trap
 	end loop
 	end var
 	end var
@@ -155,8 +198,7 @@ module DrivingControl:
 			% If we stay in the ON state, don't reset integral part (i.e isGoingOn = 0 (false))
 			elsif (enteredOn and currentState = 2) then
 				isGoingOn := 0;
-				throttleCmdOut := regulateThrottle(isGoingOn, ?cruiseSpeed, ?speed);
-				
+				throttleCmdOut := regulateThrottle(isGoingOn, ?cruiseSpeed, ?speed);				
 			end if;
 			
 			emit throttleCmd(throttleCmdOut);
@@ -169,47 +211,39 @@ end module
 module CruiseController:
 
 	% Visible inputs/outputs StateController
-	input on1 := false : boolean, off1 := false : boolean, resume1 := false : boolean, set1 := false : boolean;
-	input quickAccel1 := false : boolean, quickDecel1 := false : boolean;
-	input accel1 := 0.0f : float, brake1 := 0.0f : float, speed1 := 0.0f : float;
+	input on, off, resume, set;
+	input quickAccel, quickDecel;
+	input accel := 0.0f : float, brake := 0.0f : float, speed := 0.0f : float;
 	
-	output cruiseSpeed1 := 0.0f : float;
-	output throttleCmd1 := 0.0f : float;
-	output cruiseState1 := 1 : integer;
+	output cruiseSpeed := 0.0f : float;
+	output throttleCmd := 0.0f : float;
+	output cruiseState := 1 : integer;
 
 	run StateController 
 	[
-		signal accel1/accel;
-		signal brake1/brake;
-		signal cruiseState1/cruiseState;
-		signal on1/on;
-		signal off1/off;
-		signal resume1/resume;
-		signal speed1/speed
+		signal accel/accel;
+		signal brake/brake;
+		signal cruiseState/cruiseState
 	]
 
 	||
 
 	run SpeedManagement
 	[
-		signal speed1/speed;
-		signal on1/on;
-		signal set1/set;
-		signal quickAccel1/quickAccel;
-		signal quickDecel1/quickDecel;
-		signal cruiseSpeed1/cruiseSpeed;
-		signal cruiseState1/cruiseState
+		signal speed/speed;
+		signal cruiseSpeed/cruiseSpeed;
+		signal cruiseState/cruiseState
 	]
 
 	||
 
 	run DrivingControl
 	[
-		signal cruiseSpeed1/cruiseSpeed;
-		signal speed1/speed;
-		signal throttleCmd1/throttleCmd;
-		signal accel1/accel;
-		signal cruiseState1/cruiseState
+		signal cruiseSpeed/cruiseSpeed;
+		signal speed/speed;
+		signal throttleCmd/throttleCmd;
+		signal accel/accel;
+		signal cruiseState/cruiseState
 	]
 
 end module
