@@ -109,9 +109,11 @@ module StateController:
 			%  Output ON when on button pressed, accelerator not pressed, and speed in range
 			
 			present on then
-				currentState := 2;
-				emit cruiseState(currentState);
-				exit enteredOn;
+				if (currentState = 1) then
+					currentState := 2;
+					emit cruiseState(currentState);
+					exit enteredOn;
+				end if;
 			end present;
 
 			% Move to STDBY if the brake is pressed (priority)
